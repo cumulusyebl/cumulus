@@ -339,6 +339,12 @@ public class FSNamesystem implements FSConstants, FSNamesystemMBean, FSClusterSt
 			    	 collectDatanodeDescriptor(host2DataNodeMap);
 			    	 Collections.sort(list, new SortDataNode());
 			     }
+			     try {
+					Thread.sleep(3000);
+				} catch (InterruptedException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
 		   }
 	   }
 	   public void run()

@@ -46,6 +46,7 @@ import org.apache.hadoop.hdfs.server.common.GenerationStamp;
 import org.apache.hadoop.io.MD5Hash;
 import org.apache.hadoop.io.Text;
 
+
 /**
  * Contains inner classes for reading or writing the on-disk format for FSImages.
  */
@@ -154,12 +155,16 @@ class FSImageFormat {
          */
         // read image version: first appeared in version -1
         imgVersion = in.readInt();
+        LOG.info("imgVersion: "+imgVersion);
 
         // read namespaceID: first appeared in version -2
         imgNamespaceID = in.readInt();
+        LOG.info("namespaceID: "+imgNamespaceID);
 
         // read number of files
         long numFiles = readNumFiles(in);
+        
+        LOG.info("numfiles: "+numFiles);
 
         // read in the last generation stamp.
         if (imgVersion <= -12) {
@@ -191,6 +196,7 @@ class FSImageFormat {
           long modificationTime = 0;
           long atime = 0;
           long blockSize = 0;
+          long fileSize = 0;
           pathComponents = FSImageSerialization.readPathComponents(in);
           replication = in.readShort();
           replication = targetNamesystem.adjustReplication(replication);
@@ -198,27 +204,36 @@ class FSImageFormat {
           if (LayoutVersion.supports(Feature.FILE_ACCESS_TIME, imgVersion)) {
             atime = in.readLong();
           }
+          	
           if (imgVersion <= -8) {
             blockSize = in.readLong();
           }
           int numBlocks = in.readInt();
-          Block blocks[] = null;
+          Block blockss[] = null;
+          BlockInfo[] blocks = null;
+          
+          LOG.info("blockSize: "+blockSize+" numBlocks: "+numBlocks);
 
           // for older versions, a blocklist of size 0
           // indicates a directory.
           if ((-9 <= imgVersion && numBlocks > 0) ||
               (imgVersion < -9 && numBlocks >= 0)) {
-            blocks = new Block[numBlocks];
+            blockss = new Block[numBlocks];
+            blocks = new BlockInfo[numBlocks];
             for (int j = 0; j < numBlocks; j++) {
-              blocks[j] = new Block();
+              blockss[j] = new Block();
               if (-14 < imgVersion) {
-                blocks[j].set(in.readLong(), in.readLong(), 
+                blockss[j].set(in.readLong(), in.readLong(), 
                               GenerationStamp.GRANDFATHER_GENERATION_STAMP);
               } else {
-                blocks[j].readFields(in);
+                blockss[j].readFields(in);
               }
+              blocks[j] = new BlockInfo(blockss[j], replication);
             }
           }
+          
+   
+          
           // Older versions of HDFS does not store the block size in inode.
           // If the file has more than one block, use the size of the 
           // first block as the blocksize. Otherwise use the default block size.
@@ -255,6 +270,14 @@ class FSImageFormat {
             permissions = PermissionStatus.read(in);
           }
           
+          
+          	CodingMatrix codingMatrix = new CodingMatrix();
+          	if (numBlocks>0) {
+          		fileSize = in.readLong();
+				codingMatrix.readFields(in);
+			}
+          	
+          
           if (isRoot(pathComponents)) { // it is the root
             // update the root's attributes
             if (nsQuota != -1 || dsQuota != -1) {
@@ -273,7 +296,7 @@ class FSImageFormat {
           // without propagating modification time to parent
           parentINode = fsDir.addToParent(pathComponents, parentINode, permissions,
                                           blocks, symlink, replication, modificationTime, 
-                                          atime, nsQuota, dsQuota, blockSize, false);
+                                          atime, nsQuota, dsQuota, codingMatrix, fileSize, blockSize, false);
         }
 
         // load datanode info

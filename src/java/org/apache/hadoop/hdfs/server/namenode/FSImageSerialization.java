@@ -181,7 +181,7 @@ public class FSImageSerialization {
       out.writeShort(fileINode.getReplication());
       out.writeLong(fileINode.getModificationTime());
       out.writeLong(fileINode.getAccessTime());
-      out.writeLong(fileINode.getFileSize());
+      out.writeLong(64*1024*1024);
       Block[] blocks = fileINode.getBlocks();
       out.writeInt(blocks.length);
       for (Block blk : blocks)
@@ -190,6 +190,10 @@ public class FSImageSerialization {
       PermissionStatus.write(out, fileINode.getUserName(),
                              fileINode.getGroupName(),
                              filePerm);
+      
+      out.writeLong(fileINode.getFileSize());
+      fileINode.getMatrix().write(out);
+      
     }
   }
 

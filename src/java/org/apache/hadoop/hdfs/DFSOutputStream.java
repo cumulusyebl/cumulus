@@ -34,8 +34,9 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.EnumSet;
 import java.util.LinkedList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 
 
 import org.apache.hadoop.conf.Configuration;
@@ -79,7 +80,6 @@ import org.apache.hadoop.hdfs.security.token.block.InvalidBlockTokenException;
 import org.apache.hadoop.hdfs.security.token.block.BlockTokenIdentifier;
 import org.apache.hadoop.hdfs.protocol.RSCoderProtocol;
 
-import com.sun.org.apache.bcel.internal.generic.NEW;
 
 
 
@@ -151,6 +151,7 @@ class DFSOutputStream extends FSOutputSummer implements Syncable {
   private boolean[] queueEnd;
   private Object object = new Object();
   private int count = 0;
+  private ExecutorService pool;
   
   private class Packet {
     long    seqno;               // sequencenumber of buffer in block
@@ -345,7 +346,7 @@ class DFSOutputStream extends FSOutputSummer implements Syncable {
     			   System.arraycopy(bytes, 0, buf, checksumPos, 4);
     			   checksumPos += 4;
     	  	}
-    	  	DFSClient.LOG.info("mult time: "+ (System.currentTimeMillis()-start));
+    	  	//DFSClient.LOG.info("mult time: "+ (System.currentTimeMillis()-start));
 //    	  	DFSClient.LOG.info("mult after update checksumPos: "+checksumPos); 
     	
     }
@@ -416,7 +417,7 @@ class DFSOutputStream extends FSOutputSummer implements Syncable {
 		   checksumPos += 4;
   	}
   	
-  	DFSClient.LOG.info("code time: "+(System.currentTimeMillis()-start));
+  	//DFSClient.LOG.info("code time: "+(System.currentTimeMillis()-start));
 //  	DFSClient.LOG.info("after update checksumPos: "+checksumPos); 
   }
     
@@ -674,9 +675,12 @@ class DFSOutputStream extends FSOutputSummer implements Syncable {
               	synchronized (dataQueue.get(i)) {
                 // move packet from dataQueue to ackQueue
                   dataQueue.get(i).removeFirst();
-                  ackQueue.get(i).addLast(one);
+                  //ackQueue.get(i).addLast(one);
                   dataQueue.get(i).notifyAll();
                 }
+              	synchronized (ackQueue.get(i)) {
+					ackQueue.get(i).addLast(one);
+				}
               }
           	
          if (DFSClient.LOG.isDebugEnabled()) {
@@ -1861,6 +1865,7 @@ class DFSOutputStream extends FSOutputSummer implements Syncable {
 	     }
 	    streamer = new DataStreamer();
 	    streamer.start();
+	    pool = Executors.newFixedThreadPool(n);
 	  }
   /**
    * Create a new output stream to the given DataNode.
@@ -2040,7 +2045,7 @@ class DFSOutputStream extends FSOutputSummer implements Syncable {
 	    	  offsetInB += 65024;
 	      }
 	      
-	      long start = System.currentTimeMillis();
+	      long start = System.nanoTime();
 	      
 	      count = 0;
 	      for (int i = 0; i < matrix.getColumn(); ++i) {
@@ -2053,7 +2058,8 @@ class DFSOutputStream extends FSOutputSummer implements Syncable {
 						count++;
 						object.notifyAll();
 	    			  }
-	    			  new Thread(new mult(codeBuf[i], matrix.getElemAt(row, i))).start();;
+	    			  //new Thread(new mult(codeBuf[i], matrix.getElemAt(row, i))).start();;
+	    			  pool.execute(new mult(codeBuf[i], matrix.getElemAt(row, i)));
 	    			  codeBuf[i].setOffset(offsetInB);
 	    		  }
 	    		  else {
@@ -2062,14 +2068,15 @@ class DFSOutputStream extends FSOutputSummer implements Syncable {
 						count++;
 						object.notifyAll();
 					}
-	    			  new Thread(new code(codeBuf[i], currentPacket, matrix.getElemAt(row, i))).start();
-				}
+	    			  //new Thread(new code(codeBuf[i], currentPacket, matrix.getElemAt(row, i))).start();
+	    			  pool.execute(new code(codeBuf[i], currentPacket, matrix.getElemAt(row, i)));
+	    		  }
 	    		  
 	    	  }
 	    		  
 	      }
 	      
-	      DFSClient.LOG.info("before wait: "+(System.currentTimeMillis()-start));
+	      //DFSClient.LOG.info("before wait: "+(System.nanoTime()-start));
 	      while(true){
 	    	  synchronized (object) {
 				if (count!=0) {
@@ -2087,7 +2094,7 @@ class DFSOutputStream extends FSOutputSummer implements Syncable {
 			}
 		}
 	 
-	      DFSClient.LOG.info("out:  "+(System.currentTimeMillis()-start));
+	      //DFSClient.LOG.info("out:  "+(System.nanoTime()-start));
 	      currentPacket = null;
 
 	  }
@@ -2120,12 +2127,11 @@ class DFSOutputStream extends FSOutputSummer implements Syncable {
 	// TODO:
 	    	//DFSClient.LOG.info("waitAndCodeCurrentPacket()");
 	    	// TODO: 
-	    	while (!closed && dataQueue.get(0).size() /*+ ackQueue.get(0).size()*/  > MAX_PACKETS)
+	    	while (!closed && dataQueue.get(0).size()  > MAX_PACKETS)
 	      {
 	        
 	      }
 	      isClosed();
-	      System.out.println("~~~~~"+dataQueue.get(0).size());
 	      codeCurrentPacket();
 	  }
 
@@ -2481,10 +2487,11 @@ class DFSOutputStream extends FSOutputSummer implements Syncable {
       // TODO:
      // Block lastBlock = streamer.getBlock();
       closeThreads(false);
-      DFSClient.LOG.info("before compltefile: "+ (new Date().getTime()-DFSClient.startTime));
+      DFSClient.LOG.info("Cumulus write time consumption:  "+ (new Date().getTime()-DFSClient.startTime)+ " ms");
       completeFile(src);
-      DFSClient.LOG.info("after compltefile: "+ (new Date().getTime()-DFSClient.startTime));
+      //DFSClient.LOG.info("after compltefile: cumulus"+ (new Date().getTime()-DFSClient.startTime));
       dfsClient.leasechecker.remove(src);
+      pool.shutdown();
     } finally {
       closed = true;
     }
@@ -2552,7 +2559,8 @@ class DFSOutputStream extends FSOutputSummer implements Syncable {
     return streamer.getBlockToken();
   }
   
-  class mult implements Runnable{
+  
+  class mult extends Thread{
 	  
 	  byte element;
 	  Packet packet;
@@ -2575,7 +2583,7 @@ class DFSOutputStream extends FSOutputSummer implements Syncable {
 	  
   }
   
-  class code implements Runnable{
+  class code extends Thread{
 	  Packet p1;
 	  Packet p2;
 	  byte element;

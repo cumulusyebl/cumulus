@@ -51,7 +51,6 @@ import org.apache.hadoop.hdfs.server.common.HdfsConstants.StartupOption;
 import org.apache.hadoop.hdfs.util.ByteArray;
 import static org.apache.hadoop.hdfs.server.common.Util.now;
 import org.apache.hadoop.hdfs.DFSConfigKeys;
-import org.mockito.internal.stubbing.answers.ThrowsException;
 
 /*************************************************
  * FSDirectory stores the filesystem directory state.
@@ -140,6 +139,7 @@ class FSDirectory implements Closeable {
                    StartupOption startOpt) 
       throws IOException {
     // format before starting up if requested
+	 NameNode.LOG.info("opt:  "+startOpt);
     if (startOpt == StartupOption.FORMAT) {
       fsImage.setStorageDirectories(dataDirs, editsDirs);
       fsImage.format();
@@ -306,41 +306,43 @@ class FSDirectory implements Closeable {
    */
   INode unprotectedAddFile( String path, 
                             PermissionStatus permissions,
+                            CodingMatrix codingMatrix,
+                            long fileSize,
                             BlockInfo[] blocks, 
                             short replication,
                             long modificationTime,
                             long atime,
                             long preferredBlockSize) 
       throws UnresolvedLinkException {
-//    INode newNode;
-//    long diskspace = UNKNOWN_DISK_SPACE;
-//    if (blocks == null)
-//      newNode = new INodeDirectory(permissions, modificationTime);
-//    else {
-//      newNode = new INodeFile(permissions, blocks.length, replication,
-//                              modificationTime, atime, preferredBlockSize);
-//      diskspace = ((INodeFile)newNode).diskspaceConsumed(blocks);
-//    }
-//    writeLock();
-//    try {
-//      try {
-//        newNode = addNode(path, newNode, diskspace, false);
-//        if(newNode != null && blocks != null) {
-//          int nrBlocks = blocks.length;
-//          // Add file->block mapping
-//          INodeFile newF = (INodeFile)newNode;
-//          for (int i = 0; i < nrBlocks; i++) {
-//            newF.setBlock(i, getBlockManager().addINode(blocks[i], newF));
-//          }
-//        }
-//      } catch (IOException e) {
-//        return null;
-//      }
-//      return newNode;
-//    } finally {
-//      writeUnlock();
-//    }
-	  return null;
+    INode newNode;
+    long diskspace = UNKNOWN_DISK_SPACE;
+    if (blocks == null)
+      newNode = new INodeDirectory(permissions, modificationTime);
+    else {
+      newNode = new INodeFile(permissions, codingMatrix, blocks,
+                              modificationTime, atime, fileSize, 65536);
+      diskspace = ((INodeFile)newNode).diskspaceConsumed(blocks);
+    }
+    writeLock();
+    try {
+      try {
+        newNode = addNode(path, newNode, diskspace, false);
+        if(newNode != null && blocks != null) {
+          int nrBlocks = blocks.length;
+          // Add file->block mapping
+          INodeFile newF = (INodeFile)newNode;
+          for (int i = 0; i < nrBlocks; i++) {
+            newF.setBlock(i, getBlockManager().addINode(blocks[i], newF));
+          }
+        }
+      } catch (IOException e) {
+        return null;
+      }
+      return newNode;
+    } finally {
+      writeUnlock();
+    }
+	  
   }
 
   INodeDirectory addToParent( byte[][] src,
@@ -401,7 +403,68 @@ class FSDirectory implements Closeable {
 //    }
 //    return newParent;
 	  return null;
+	  
   }
+  
+  INodeDirectory addToParent( byte[][] src,
+						          INodeDirectory parentINode,
+						          PermissionStatus permissions,
+						          BlockInfo[] blocks, 
+						          String symlink,
+						          short replication,
+						          long modificationTime,
+						          long atime,
+						          long nsQuota,
+						          long dsQuota,
+						          CodingMatrix codingMatrix,
+						          long fileSize,
+						          long preferredBlockSize,
+						          boolean propagateModTime) 
+						          throws UnresolvedLinkException {
+	    INode newNode;
+	    if (symlink.length() != 0) {
+	      newNode = new INodeSymlink(symlink, modificationTime, atime, permissions);
+	      ((INodeSymlink)newNode).setLinkValue(symlink);
+	    } else if (blocks == null) {
+	      if (nsQuota >= 0 || dsQuota >= 0) {
+	        newNode = new INodeDirectoryWithQuota(
+	            permissions, modificationTime, nsQuota, dsQuota);
+	      } else {
+	        newNode = new INodeDirectory(permissions, modificationTime);
+	      }
+	    } else {
+	      newNode = new INodeFile(permissions, codingMatrix,blocks,
+	                              modificationTime, atime, fileSize, 65536);
+	    }
+	    // add new node to the parent
+	    INodeDirectory newParent = null;
+	    writeLock();
+	    try {
+	      try {
+	        newParent = rootDir.addToParent(src, newNode, parentINode,
+	                                        false, propagateModTime);
+	        cacheName(newNode);
+	      } catch (FileNotFoundException e) {
+	        return null;
+	      }
+	      if(newParent == null)
+	        return null;
+	      if(blocks != null) {
+	        int nrBlocks = blocks.length;
+	        // Add file->block mapping
+	        assert !newNode.isLink();
+	        INodeFile newF = (INodeFile)newNode;
+	        for (int i = 0; i < nrBlocks; i++) {
+	          BlockInfo blockInfo = new BlockInfo(blocks[i], newF.getReplication());
+	          newF.setBlock(i, getBlockManager().addINode(blockInfo, newF));
+	        }
+	      }
+	    } finally {
+	      writeUnlock();
+	    }
+	    return newParent;
+
+}
 
   /**
    * Add a block to the file. Returns a reference to the added block.

@@ -45,6 +45,7 @@ import org.apache.hadoop.hdfs.server.protocol.NamenodeRegistration;
 import org.apache.hadoop.io.ArrayWritable;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.TwoDArrayWritable;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.security.token.delegation.DelegationKey;
 
@@ -666,11 +667,12 @@ public class FSEditLog {
       FSEditLog.toLogReplication(newNode.getReplication()),
       FSEditLog.toLogLong(newNode.getModificationTime()),
       FSEditLog.toLogLong(newNode.getAccessTime()),
+      FSEditLog.toLogLong(64*1024*1024),
       FSEditLog.toLogLong(newNode.getFileSize())};
     logEdit(Ops.OP_CLOSE,
             new ArrayWritable(DeprecatedUTF8.class, nameReplicationPair),
             new ArrayWritable(Block.class, newNode.getBlocks()),
-            newNode.getPermissionStatus());
+            newNode.getPermissionStatus(),newNode.getMatrix());
   }
   
   /** 

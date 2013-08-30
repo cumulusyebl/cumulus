@@ -44,6 +44,7 @@ import org.apache.hadoop.io.WritableFactories;
 import org.apache.hadoop.io.WritableFactory;
 import org.apache.hadoop.security.token.delegation.DelegationKey;
 
+
 public class FSEditLogLoader {
   private final FSNamesystem fsNamesys;
 
@@ -105,6 +106,10 @@ public class FSEditLogLoader {
   @SuppressWarnings("deprecation")
   int loadEditRecords(int logVersion, DataInputStream in,
       boolean closeOnExit) throws IOException {
+	  
+	 FSNamesystem.LOG.info("logversion: "+logVersion);
+	 
+	 
     FSDirectory fsDir = fsNamesys.dir;
     int numEdits = 0;
     String clientName = null;
@@ -144,7 +149,7 @@ public class FSEditLogLoader {
           int length = in.readInt();
           if (-7 == logVersion && length != 3||
               -17 < logVersion && logVersion < -7 && length != 4 ||
-              logVersion <= -17 && length != 5) {
+              logVersion <= -17 && length != 6) {
               throw new IOException("Incorrect data format."  +
                                     " logVersion is " + logVersion +
                                     " but writables.length is " +
@@ -159,6 +164,9 @@ public class FSEditLogLoader {
           if (logVersion < -7) {
             blockSize = readLong(in);
           }
+          
+          long fileSize = readLong(in);
+          
           // get blocks
           boolean isFileUnderConstruction = (opcode == Ops.OP_ADD);
           BlockInfo blocks[] = 
@@ -181,6 +189,8 @@ public class FSEditLogLoader {
           if (logVersion <= -11) {
             permissions = PermissionStatus.read(in);
           }
+          	CodingMatrix codingMatrix = new CodingMatrix();
+          	codingMatrix.readFields(in);
 
           // clientname, clientMachine and block locations of last block.
           if (opcode == Ops.OP_ADD && logVersion <= -12) {
@@ -208,7 +218,7 @@ public class FSEditLogLoader {
           // add to the file tree
           INodeFile node = (INodeFile)fsDir.unprotectedAddFile(
                                                     path, permissions,
-                                                    blocks, replication, 
+                                                    codingMatrix, fileSize, blocks, replication, 
                                                     mtime, atime, blockSize);
           if (isFileUnderConstruction) {
             numOpAdd++;

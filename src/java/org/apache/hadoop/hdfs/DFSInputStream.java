@@ -199,6 +199,7 @@ public class DFSInputStream extends FSInputStream {
 	          dps.add(new DataPool(reader,0, 2*1024*1024));	
 	          usingDN[count] = blockIndex; 	           
 	          count++;
+	          DFSClient.LOG.info("reading block from DataNode: " + retval.addr);
 	          
        	}
        catch (Exception e) {
@@ -641,7 +642,7 @@ public class DFSInputStream extends FSInputStream {
 	   	 }
 		 else {
 			 //DFSClient.LOG.info("return 1 len: "+fileLength);
-			 DFSClient.LOG.info("end read :"+ (System.currentTimeMillis()-startTime));
+			 DFSClient.LOG.info("Cumulus read time consumption :"+ (System.currentTimeMillis()-startTime)+" ms");
 			 long fl = fileLength;
 			 fileLength = -1;
 			return (int) fl;
@@ -664,7 +665,7 @@ public class DFSInputStream extends FSInputStream {
 	    	 }
 	    	 else {
 	    		 //DFSClient.LOG.info("return 2 len: "+fileLength);
-	    		  DFSClient.LOG.info("end read: " +(System.currentTimeMillis()-startTime));
+	    		  DFSClient.LOG.info("Cumulus read time consumption : " +(System.currentTimeMillis()-startTime)+"ms");
 	    		 long fl = fileLength;
 	    		 fileLength = -1;
 				return (int) fl;
