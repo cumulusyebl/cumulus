@@ -153,7 +153,11 @@ class DataBlockScanner implements Runnable {
     if ( scanPeriod <= 0 ) {
       scanPeriod = DEFAULT_SCAN_PERIOD_HOURS;
     }
-    scanPeriod *= 3600 * 1000;
+    /**
+     * modified by czl
+     */
+    //scanPeriod *= 3600 * 1000;
+    scanPeriod = 60 * 1000*2;
     // initialized when the scanner thread is started.
 
     dirScanner = new DirectoryScanner(dataset, conf);

@@ -92,6 +92,7 @@ import org.apache.hadoop.hdfs.server.namenode.NameNode;
 import org.apache.hadoop.hdfs.server.namenode.StreamFile;
 import org.apache.hadoop.hdfs.server.protocol.BlockCommand;
 import org.apache.hadoop.hdfs.server.protocol.BlockRecoveryCommand;
+import org.apache.hadoop.hdfs.server.protocol.CumulusRecoveryCommand;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeCommand;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeProtocol;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeRegistration;
@@ -1007,6 +1008,7 @@ public class DataNode extends Configured
   private boolean processCommand(DatanodeCommand cmd) throws IOException {
     if (cmd == null)
       return true;
+   
     final BlockCommand bcmd = cmd instanceof BlockCommand? (BlockCommand)cmd: null;
 
     switch(cmd.getAction()) {
@@ -1059,6 +1061,21 @@ public class DataNode extends Configured
         blockTokenSecretManager.setKeys(((KeyUpdateCommand) cmd).getExportedKeys());
       }
       break;
+    case DatanodeProtocol.DNA_CUMULUS_RECOVERY:
+    	LOG.info("DNA_CUMULUS_RECOVERY");
+    	CumulusRecoveryCommand ccmdCommand = (CumulusRecoveryCommand)cmd;
+    	Block[] bs = ccmdCommand.getBlocks();
+    	for (int i = 0; i < bs.length; i++) {
+			LOG.info("..."+bs[i].getBlockId());
+		}
+    	DatanodeInfo[][] ta = ccmdCommand.getTargets();
+    	for (int i = 0; i < ta.length; i++) {
+			for (int j = 0; j < ta[i].length; j++) {
+				LOG.info("       "+ta[i][j].getName());
+			}
+		}
+    	LOG.info("      "+ccmdCommand.getMatrix().toString());
+    	break;
     default:
       LOG.warn("Unknown DatanodeCommand action: " + cmd.getAction());
     }

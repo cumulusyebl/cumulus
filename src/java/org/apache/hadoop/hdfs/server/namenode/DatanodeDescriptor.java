@@ -20,6 +20,7 @@ package org.apache.hadoop.hdfs.server.namenode;
 import java.io.DataInput;
 import java.io.IOException;
 import java.util.*;
+import java.util.concurrent.LinkedBlockingDeque;
 
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
@@ -31,11 +32,15 @@ import org.apache.hadoop.hdfs.protocol.BlockListAsLongs.BlockReportIterator;
 import org.apache.hadoop.hdfs.server.common.HdfsConstants.ReplicaState;
 import org.apache.hadoop.hdfs.server.protocol.BlockCommand;
 import org.apache.hadoop.hdfs.server.protocol.BlockRecoveryCommand;
+import org.apache.hadoop.hdfs.server.protocol.CumulusRecoveryCommand;
 import org.apache.hadoop.hdfs.server.protocol.BlockRecoveryCommand.RecoveringBlock;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeProtocol;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.hdfs.DeprecatedUTF8;
 import org.apache.hadoop.io.WritableUtils;
+
+
+
 
 /**************************************************
  * DatanodeDescriptor tracks stats on a given DataNode, such as
@@ -113,7 +118,9 @@ public class DatanodeDescriptor extends DatanodeInfo {
                                 new BlockQueue<BlockInfoUnderConstruction>();
   /** A set of blocks to be invalidated by this datanode */
   private Set<Block> invalidateBlocks = new TreeSet<Block>();
-
+  
+  private Queue<BlockInfo> cumulusRecover = new LinkedBlockingDeque<BlockInfo>();
+  
   /* Variables for maintaining number of blocks scheduled to be written to
    * this datanode. This count is approximate and might be slightly bigger
    * in case of errors (e.g. datanode does not report if an error occurs 
@@ -324,6 +331,16 @@ public class DatanodeDescriptor extends DatanodeInfo {
     assert(block != null && targets != null && targets.length > 0);
     replicateBlocks.offer(new BlockTargetPair(block, targets));
   }
+  
+  
+  /**
+   * added by czl
+   * add block to recover queue
+   * @param block
+   */
+  void addBlockToBeRecoveredCumulus(BlockInfo block){
+	   cumulusRecover.offer(block);
+   }
 
   /**
    * Store block recovery work.
@@ -365,6 +382,25 @@ public class DatanodeDescriptor extends DatanodeInfo {
     synchronized (invalidateBlocks) {
       return invalidateBlocks.size();
     }
+  }
+  
+  CumulusRecoveryCommand getCumulusRecoveryCommand(){
+	  BlockInfo blockInfo = cumulusRecover.poll();
+	  if (blockInfo == null) {
+		return null;
+	}
+	  INodeFile filenode = blockInfo.getINode();
+	  List<BlockTargetPair> blockTargetPairs = new ArrayList<BlockTargetPair>();
+	  DatanodeDescriptor[] dnds;
+	  for(BlockInfo blkInfo: filenode.getBlocks()){
+		  if (blkInfo.getBlockId()!=blockInfo.getBlockId()) {
+			  dnds = new DatanodeDescriptor[1];
+			  dnds[0] = blkInfo.getDatanode(0);
+			  NameNode.LOG.info("hahahhhahah"+dnds[0].toString()+"    "+blkInfo.getBlockId());
+			  blockTargetPairs.add(new BlockTargetPair((Block)blkInfo, dnds));
+		}
+	  }
+	  return new CumulusRecoveryCommand(DatanodeProtocol.DNA_CUMULUS_RECOVERY, filenode.getMatrix(), blockTargetPairs);
   }
   
   BlockCommand getReplicationCommand(int maxTransfers) {

@@ -55,6 +55,7 @@ import org.apache.hadoop.net.ScriptBasedMapping;
 import org.apache.hadoop.hdfs.server.namenode.LeaseManager.Lease;
 import org.apache.hadoop.hdfs.server.namenode.UnderReplicatedBlocks.BlockIterator;
 import org.apache.hadoop.hdfs.server.protocol.BlocksWithLocations;
+import org.apache.hadoop.hdfs.server.protocol.CumulusRecoveryCommand;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeCommand;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeRegistration;
 import org.apache.hadoop.hdfs.server.protocol.DisallowedDatanodeException;
@@ -104,6 +105,7 @@ import javax.management.NotCompliantMBeanException;
 import javax.management.ObjectName;
 import javax.management.StandardMBean;
 import javax.management.MBeanServer;
+import org.apache.hadoop.hdfs.protocol.CodingMatrix;
 
 /***************************************************
  * FSNamesystem does the actual bookkeeping work for the
@@ -3067,7 +3069,16 @@ public class FSNamesystem implements FSConstants, FSNamesystemMBean, FSClusterSt
           return new DatanodeCommand[] {cmd};
         }
       
-        ArrayList<DatanodeCommand> cmds = new ArrayList<DatanodeCommand>(3);
+        ArrayList<DatanodeCommand> cmds = new ArrayList<DatanodeCommand>(4);
+        
+        //cumulus recover added by czl
+        cmd = nodeinfo.getCumulusRecoveryCommand();
+        if (cmd != null) {
+			cmds.add(cmd);
+			FSNamesystem.LOG.info("node get recover guide : "+nodeinfo.toString());
+			FSNamesystem.LOG.info("   "+((CumulusRecoveryCommand)cmd).getBlocks()[0].getBlockId());
+			//FSNamesystem.LOG.info("   "+((CumulusRecoveryCommand)cmd).getMatrix());
+		}
         //check pending replication
         cmd = nodeinfo.getReplicationCommand(
               blockManager.maxReplicationStreams - xmitsInProgress);
@@ -3086,6 +3097,7 @@ public class FSNamesystem implements FSConstants, FSNamesystemMBean, FSClusterSt
         }
         if (!cmds.isEmpty()) {
           return cmds.toArray(new DatanodeCommand[cmds.size()]);
+          
         }
       }
     }

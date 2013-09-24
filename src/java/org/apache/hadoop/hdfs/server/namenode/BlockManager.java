@@ -22,6 +22,7 @@ import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -30,6 +31,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.Vector;
 
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.conf.Configuration;
@@ -42,9 +44,7 @@ import org.apache.hadoop.hdfs.server.common.HdfsConstants.ReplicaState;
 import org.apache.hadoop.hdfs.server.namenode.FSNamesystem.NumberReplicas;
 import org.apache.hadoop.hdfs.server.namenode.UnderReplicatedBlocks.BlockIterator;
 import org.apache.hadoop.hdfs.DFSConfigKeys;
-import org.mockito.asm.tree.IntInsnNode;
-
-import com.sun.org.apache.commons.logging.Log;
+import org.apache.hadoop.net.Node;
 
 /**
  * Keeps information related to the blocks stored in the Hadoop cluster.
@@ -745,7 +745,8 @@ public class BlockManager {
     int scheduledReplicationCount = 0;
     for (int i=0; i<blocksToReplicate.size(); i++) {
       for(Block block : blocksToReplicate.get(i)) {
-        if (computeReplicationWorkForBlock(block, i)) {
+        //if (computeReplicationWorkForBlock(block, i)) {  modified by czl
+        if(computeRecoveryWorkForBlock(block,i)){
           scheduledReplicationCount++;
         }
       }
@@ -818,6 +819,61 @@ public class BlockManager {
 
     return blocksToReplicate;
   }
+  
+  
+  /**
+   * added bt czl
+   * 	cumulus block recovery process
+   * @param block
+   * @param priority
+   * @return
+   */
+  private boolean computeRecoveryWorkForBlock(Block block, int priority) {
+	    DatanodeDescriptor newComer;
+	    INodeFile fileINode = null;
+	    
+
+	    namesystem.writeLock();
+	    try {
+	      synchronized (neededReplications) {
+	        // block should belong to a file
+	        fileINode = blocksMap.getINode(block);
+	        // abandoned block or block reopened for append
+	        if(fileINode == null || fileINode.isUnderConstruction()) {
+	          neededReplications.remove(block, priority); // remove from neededReplications
+	          replIndex--;
+	          return false;
+	        }
+	        
+	        if (pendingReplications.getNumReplicas(block) >= fileINode.getReplication()) {
+				return false;//enough
+			}
+
+
+	        // get a newComer
+	        Vector<BlockInfo> blockInfo = new Vector<BlockInfo>();
+	        newComer = chooseNewComer(block, blockInfo);
+	        if (newComer==null) {
+	        	return false;
+	         }
+	        newComer.addBlockToBeRecoveredCumulus(blockInfo.remove(0));
+	        
+	        neededReplications.remove(block, priority); // remove from neededReplications
+	        replIndex--;
+	        
+	        pendingReplications.add(block, 1);
+
+	      }
+	    }catch (Exception e) {
+			// TODO: handle exception
+	    	NameNode.LOG.info("inner"+e.toString());
+		} 
+	    finally {
+	      namesystem.writeUnlock();
+	    }
+
+	    return true;
+	  }
 
   /** Replicate a block
    *
@@ -831,6 +887,8 @@ public class BlockManager {
     DatanodeDescriptor srcNode;
     INodeFile fileINode = null;
     int additionalReplRequired;
+    
+    NameNode.stateChangeLog.info("lost ever........"+block.getBlockName());
 
     namesystem.writeLock();
     try {
@@ -976,6 +1034,30 @@ public class BlockManager {
     }
 
     return true;
+  }
+  
+  /**
+   * choose src datanodes for recovery work
+   * added by czl
+   * @return
+   */
+  
+  private DatanodeDescriptor chooseNewComer(Block block, Vector<BlockInfo> blockInfo){
+	  INodeFile filenode = blocksMap.getINode(block);
+	  BlockInfo[] blkInfos = filenode.getBlocks();
+	  HashMap<Node, Node> excludedNodesSet = new HashMap<Node, Node>(blkInfos.length);
+	  for (BlockInfo blkInfo : blkInfos) {
+		  if (block.getBlockId()==blkInfo.getBlockId()) {
+			blockInfo.add(blkInfo);
+		  }
+		  excludedNodesSet.put((Node)blkInfo.getDatanode(0), (Node)blkInfo.getDatanode(0));
+		}
+	  DatanodeDescriptor[] newComer = replicator.chooseTarget(filenode.getFullPathName(), 1, null, excludedNodesSet, block.getNumBytes());
+	  if (newComer[0] != null) {
+		return newComer[0];
+	}
+	  
+	  return null;
   }
 
   /**

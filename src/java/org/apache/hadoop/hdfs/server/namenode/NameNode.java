@@ -103,6 +103,7 @@ import org.apache.hadoop.security.token.SecretManager.InvalidToken;
 import org.apache.hadoop.security.token.Token;
 import org.apache.hadoop.util.ServicePlugin;
 import org.apache.hadoop.util.StringUtils;
+import org.apache.hadoop.hdfs.protocol.CodingMatrix;
 
 /**********************************************************
  * NameNode serves as both directory namespace manager and

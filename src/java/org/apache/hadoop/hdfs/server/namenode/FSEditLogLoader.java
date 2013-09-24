@@ -43,6 +43,7 @@ import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.io.WritableFactories;
 import org.apache.hadoop.io.WritableFactory;
 import org.apache.hadoop.security.token.delegation.DelegationKey;
+import org.apache.hadoop.hdfs.protocol.CodingMatrix;
 
 
 public class FSEditLogLoader {

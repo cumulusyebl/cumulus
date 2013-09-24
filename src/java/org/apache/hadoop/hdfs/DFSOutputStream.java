@@ -61,7 +61,7 @@ import org.apache.hadoop.hdfs.protocol.DataTransferProtocol.PacketHeader;
 import org.apache.hadoop.hdfs.protocol.DataTransferProtocol.PipelineAck;
 import org.apache.hadoop.hdfs.server.common.HdfsConstants;
 import org.apache.hadoop.hdfs.server.datanode.DataNode;
-import org.apache.hadoop.hdfs.server.namenode.CodingMatrix;
+import org.apache.hadoop.hdfs.protocol.CodingMatrix;
 import org.apache.hadoop.hdfs.server.namenode.NotReplicatedYetException;
 import org.apache.hadoop.hdfs.server.namenode.SafeModeException;
 import org.apache.hadoop.io.EnumSetWritable;
@@ -322,13 +322,13 @@ class DFSOutputStream extends FSOutputSummer implements Syncable {
     	  {
     		  this.buf[this.dataStart + i]=(byte)Buf[i];
     	  }
-//    		DFSClient.LOG.info("mult before update checksumPos: "+checksumPos); 
+    		DFSClient.LOG.info("mult before update checksumPos: "+checksumPos); 
     	  	byte[] bytes;
     	  	int flag = dataStart;
     	  	checksumPos = checksumStart;
     	  	DataChecksum checksum = DataChecksum.newDataChecksum(DataChecksum.CHECKSUM_CRC32, 
     	            512);
-//    		DFSClient.LOG.info("mult chunksPerPacket: "+chunksPerPacket); 
+    		DFSClient.LOG.info("mult chunksPerPacket: "+chunksPerPacket); 
     	  	for (int i = 0;i<chunksPerPacket;i++){
     	  		checksum.reset();
     	  		if(dataPos-flag<512)
@@ -347,7 +347,7 @@ class DFSOutputStream extends FSOutputSummer implements Syncable {
     			   checksumPos += 4;
     	  	}
     	  	//DFSClient.LOG.info("mult time: "+ (System.currentTimeMillis()-start));
-//    	  	DFSClient.LOG.info("mult after update checksumPos: "+checksumPos); 
+    	  	DFSClient.LOG.info("mult after update checksumPos: "+checksumPos); 
     	
     }
     
@@ -390,14 +390,14 @@ class DFSOutputStream extends FSOutputSummer implements Syncable {
   		  this.buf[this.dataStart + i]=(byte)Buf[i];
   	  }
 
-//  	DFSClient.LOG.info("before update checksumPos: "+checksumPos); 
+  	DFSClient.LOG.info("before update checksumPos: "+checksumPos); 
   	byte[] bytes;
   	int flag = dataStart;
   	int checksumPerPacket = (checksumPos - checksumStart)/4;
   	checksumPos = checksumStart;
   	DataChecksum checksum = DataChecksum.newDataChecksum(DataChecksum.CHECKSUM_CRC32, 
             512);
-//	DFSClient.LOG.info("chunksPerPacket: "+chunksPerPacket); 
+	DFSClient.LOG.info("chunksPerPacket: "+chunksPerPacket); 
   	for (int i = 0;i < checksumPerPacket;i++){
   		
   		checksum.reset();
@@ -418,7 +418,7 @@ class DFSOutputStream extends FSOutputSummer implements Syncable {
   	}
   	
   	//DFSClient.LOG.info("code time: "+(System.currentTimeMillis()-start));
-//  	DFSClient.LOG.info("after update checksumPos: "+checksumPos); 
+  	DFSClient.LOG.info("after update checksumPos: "+checksumPos); 
   }
     
     // get the packet's last byte's offset in the block
@@ -2094,7 +2094,7 @@ class DFSOutputStream extends FSOutputSummer implements Syncable {
 			}
 		}
 	 
-	      //DFSClient.LOG.info("out:  "+(System.nanoTime()-start));
+	      DFSClient.LOG.info("out:  "+(System.nanoTime()-start));
 	      currentPacket = null;
 
 	  }
