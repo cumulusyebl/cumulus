@@ -866,7 +866,7 @@ public class BlockManager {
 	      }
 	    }catch (Exception e) {
 			// TODO: handle exception
-	    	NameNode.LOG.info("inner"+e.toString());
+	    	NameNode.LOG.info("inner "+e.toString());
 		} 
 	    finally {
 	      namesystem.writeUnlock();

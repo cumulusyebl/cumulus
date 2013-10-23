@@ -65,11 +65,13 @@ import org.apache.hadoop.hdfs.HdfsConfiguration;
 import org.apache.hadoop.hdfs.protocol.Block;
 import org.apache.hadoop.hdfs.protocol.BlockListAsLongs;
 import org.apache.hadoop.hdfs.protocol.ClientDatanodeProtocol;
+import org.apache.hadoop.hdfs.protocol.CodingMatrix;
 import org.apache.hadoop.hdfs.protocol.DataTransferProtocol;
 import org.apache.hadoop.hdfs.protocol.DatanodeID;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.FSConstants;
 import org.apache.hadoop.hdfs.protocol.LocatedBlock;
+import org.apache.hadoop.hdfs.protocol.RSCoderProtocol;
 import org.apache.hadoop.hdfs.protocol.RecoveryInProgressException;
 import org.apache.hadoop.hdfs.protocol.UnregisteredNodeException;
 import org.apache.hadoop.hdfs.protocol.DataTransferProtocol.BlockConstructionStage;
@@ -912,8 +914,8 @@ public class DataNode extends Configured
           //
           lastHeartbeat = startTime;
 	   collectDatanodeStat();                 //tongxin added
-	    LOG.info("\r\n heartbeat :" +"\r\n  cpu: "+dnStat.getCpuUsed() +"\r\n  memory: "+dnStat.getMemUsed() 
-		+"\r\n  io: "+dnStat.getIoUsed());	
+//	    LOG.info("\r\n heartbeat :" +"\r\n  cpu: "+dnStat.getCpuUsed() +"\r\n  memory: "+dnStat.getMemUsed() 
+//		+"\r\n  io: "+dnStat.getIoUsed());	
           DatanodeCommand[] cmds = namenode.sendHeartbeat(dnRegistration,
                                                        data.getCapacity(),
                                                        data.getDfsUsed(),
@@ -1075,6 +1077,7 @@ public class DataNode extends Configured
 			}
 		}
     	LOG.info("      "+ccmdCommand.getMatrix().toString());
+    	new Thread(new CumulusRecovery(ccmdCommand.getLostColumn(), ccmdCommand.getBlocks(), ccmdCommand.getTargets(), ccmdCommand.getMatrix())).start();
     	break;
     default:
       LOG.warn("Unknown DatanodeCommand action: " + cmd.getAction());
@@ -1427,6 +1430,82 @@ public class DataNode extends Configured
         IOUtils.closeSocket(sock);
       }
     }
+  }
+  
+  /**
+   * added by czl
+   * cumulus lost recovery daemon
+   */
+  class CumulusRecovery implements Runnable{
+	  Block[] blocks;
+	  DatanodeInfo[] targets;
+	  CodingMatrix matrix;
+	  byte lostColumn;
+	  
+	  public CumulusRecovery(byte lostColumn, Block[] blocks, DatanodeInfo[][] targets, CodingMatrix matrix){
+		  this.lostColumn = lostColumn;
+		  this.blocks = new Block[blocks.length];
+		  for (int i = 0; i < blocks.length; i++) {
+			  this.blocks[i] = blocks[i];
+		  }
+		  this.targets = new DatanodeInfo[targets.length];
+		  for (int i = 0; i < targets.length; i++) {
+			this.targets[i] = targets[i][0];
+		  }
+		  this.matrix = new CodingMatrix(matrix);
+		  LOG.info("constructor..............");
+	  }
+
+	  @Override
+	  public void run() {
+		// TODO Auto-generated method stub
+		  LOG.info(lostColumn+"  ");
+		  short[][] smatrix = new short[matrix.getRow()][matrix.getRow()];
+		  short[] vector = new short[matrix.getRow()];
+		  for (int i = 0; i < matrix.getRow(); i++) {
+			  	int jj = 0;
+				for (int j = 0; j < matrix.getColumn(); j++) {
+					if (j == lostColumn) {
+						vector[i] =  (short) (matrix.getElemAt(i, j)>=0 ? matrix.getElemAt(i, j) : (matrix.getElemAt(i, j)+256)); 
+						continue;
+					}
+					smatrix[i][jj++] = (short) (matrix.getElemAt(i, j)>=0 ? matrix.getElemAt(i, j) : (matrix.getElemAt(i, j)+256)); 
+					
+				}
+		  }
+		  
+		  for (int i = 0; i < smatrix.length; i++) {
+			for (int j = 0; j < smatrix[i].length; j++) {
+				LOG.info(smatrix[i][j]+ " ");
+			}
+		}
+		  for (int i = 0; i < vector.length; i++) {
+			LOG.info(vector[i]+" ");
+		}
+		  
+		  short[][] inverse = RSCoderProtocol.getRSP().InitialInvertedCauchyMatrix(smatrix);
+		  
+		  for (int i = 0; i < inverse.length; i++) {
+				for (int j = 0; j < inverse[i].length; j++) {
+					LOG.info(inverse[i][j]+ " ");
+				}
+			}
+		  
+		  short[] coeffients = new short[vector.length];
+		  for (int i = 0; i < inverse.length; i++) {
+			  short tmp = 0;
+			  for (int j = 0; j < inverse[i].length; j++) {
+				  tmp ^= RSCoderProtocol.mult[inverse[i][j]][vector[j]];
+		  }
+			  coeffients[i] = tmp; 
+		}
+		  
+		  for (int i = 0; i < coeffients.length; i++) {
+			LOG.info(" "+coeffients[i]+"\n");
+		}
+		
+	  }
+	  
   }
   
   /**
@@ -2044,5 +2123,17 @@ public class DataNode extends Configured
       info.put(v.directory, innerInfo);
     }
     return JSON.toString(info);
+  }
+  
+  class CumulusRecover implements Runnable{
+	  CodingMatrix matrix;
+	  
+
+	@Override
+	public void run() {
+		// TODO Auto-generated method stub
+		
+	}
+	  
   }
 }

@@ -26,6 +26,7 @@ import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.hdfs.protocol.Block;
 import org.apache.hadoop.hdfs.protocol.BlockListAsLongs;
+import org.apache.hadoop.hdfs.protocol.CodingMatrix;
 import org.apache.hadoop.hdfs.protocol.DatanodeID;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.BlockListAsLongs.BlockReportIterator;
@@ -384,6 +385,10 @@ public class DatanodeDescriptor extends DatanodeInfo {
     }
   }
   
+  /**
+   * added by czl
+   * @return
+   */
   CumulusRecoveryCommand getCumulusRecoveryCommand(){
 	  BlockInfo blockInfo = cumulusRecover.poll();
 	  if (blockInfo == null) {
@@ -392,15 +397,22 @@ public class DatanodeDescriptor extends DatanodeInfo {
 	  INodeFile filenode = blockInfo.getINode();
 	  List<BlockTargetPair> blockTargetPairs = new ArrayList<BlockTargetPair>();
 	  DatanodeDescriptor[] dnds;
+	  byte lostColumn = 0;
+	  byte i = 0;
 	  for(BlockInfo blkInfo: filenode.getBlocks()){
-		  if (blkInfo.getBlockId()!=blockInfo.getBlockId()) {
-			  dnds = new DatanodeDescriptor[1];
-			  dnds[0] = blkInfo.getDatanode(0);
-			  NameNode.LOG.info("hahahhhahah"+dnds[0].toString()+"    "+blkInfo.getBlockId());
-			  blockTargetPairs.add(new BlockTargetPair((Block)blkInfo, dnds));
+	  	  dnds = new DatanodeDescriptor[1];
+		  dnds[0] = blkInfo.getDatanode(0);
+		  NameNode.LOG.info("hahahhhahah"+dnds[0].toString()+"    "+blkInfo.getBlockId());
+		  if (blkInfo.getBlockId() == blockInfo.getBlockId()) {
+			lostColumn = i;
+			continue;
 		}
+		  i++;
+		  blockTargetPairs.add(new BlockTargetPair((Block)blkInfo, dnds));
 	  }
-	  return new CumulusRecoveryCommand(DatanodeProtocol.DNA_CUMULUS_RECOVERY, filenode.getMatrix(), blockTargetPairs);
+	  CodingMatrix matrix = filenode.getMatrix();
+	  FSNamesystem.LOG.info(lostColumn+"   .............    ");
+	  return new CumulusRecoveryCommand(DatanodeProtocol.DNA_CUMULUS_RECOVERY, lostColumn, matrix, blockTargetPairs);
   }
   
   BlockCommand getReplicationCommand(int maxTransfers) {

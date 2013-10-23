@@ -43,6 +43,17 @@ public class CodingMatrix implements Writable{
 //		matrix[2][3] = 1;
 	}
 	
+	public CodingMatrix(CodingMatrix matrix) {
+		this.row = matrix.row;
+		this.column = matrix.column;
+		this.matrix = new byte[row][column];
+		for (int i = 0; i < row; i++) {
+			for (int j = 0; j < column; j++) {
+				this.matrix[i][j] = matrix.getElemAt(i, j); 
+			}
+		}
+	}
+	
 	public CodingMatrix(byte row, byte column) {
 		this.row = row;
 		this.column = column;

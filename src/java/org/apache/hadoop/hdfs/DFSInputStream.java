@@ -822,14 +822,14 @@ public class DFSInputStream extends FSInputStream {
 		 }
 		// DFSClient.LOG.info("  matrix g:"+s);
 		g=rsp.InitialInvertedCauchyMatrix(g);
-		 s="Inverted Matrix\n";
-		 for(int j=0;j<k;j++){
-	    	 for(int i=0;i < k;i++){
-	    		 s+=g[j][i]+" ";
-	    		
-	    	 }
-	    	 s+="\n";
-		 }
+//		 s="Inverted Matrix\n";
+//		 for(int j=0;j<k;j++){
+//	    	 for(int i=0;i < k;i++){
+//	    		 s+=g[j][i]+" ";
+//	    		
+//	    	 }
+//	    	 s+="\n";
+//		 }
 		// DFSClient.LOG.info("  matrix g:"+s);
 	   for(int t = 0;t < k;t++){
 		   len = 0;

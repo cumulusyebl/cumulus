@@ -28,13 +28,15 @@ public class CumulusRecoveryCommand extends DatanodeCommand{
 	Block blocks[];
 	DatanodeInfo targets[][];
 	CodingMatrix matrix;
+	byte lostColumn;
 	
 	
 	public CumulusRecoveryCommand() {	}
 	
 	
-	public CumulusRecoveryCommand(int action, CodingMatrix matrix, List<BlockTargetPair> blockTargetPairs){
+	public CumulusRecoveryCommand(int action, byte lostColumn, CodingMatrix matrix, List<BlockTargetPair> blockTargetPairs){
 		super(action);
+		this.lostColumn = lostColumn;
 		blocks = new Block[blockTargetPairs.size()]; 
 	    targets = new DatanodeInfo[blocks.length][];
 	    for(int i = 0; i < blocks.length; i++) {
@@ -57,6 +59,10 @@ public class CumulusRecoveryCommand extends DatanodeCommand{
 		return matrix;
 	}
 	
+	public byte getLostColumn() {
+		return lostColumn;
+	}
+	
 
 	  ///////////////////////////////////////////
 	  // Writable
@@ -71,6 +77,7 @@ public class CumulusRecoveryCommand extends DatanodeCommand{
 
 	  public void write(DataOutput out) throws IOException {
 	    super.write(out);
+	    out.write(lostColumn);
 	    out.writeInt(blocks.length);
 	    for (int i = 0; i < blocks.length; i++) {
 	      blocks[i].write(out);
@@ -87,6 +94,7 @@ public class CumulusRecoveryCommand extends DatanodeCommand{
 
 	  public void readFields(DataInput in) throws IOException {
 	    super.readFields(in);
+	    this.lostColumn = in.readByte();
 	    this.blocks = new Block[in.readInt()];
 	    for (int i = 0; i < blocks.length; i++) {
 	      blocks[i] = new Block();
