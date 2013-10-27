@@ -3074,10 +3074,18 @@ public class FSNamesystem implements FSConstants, FSNamesystemMBean, FSClusterSt
         //cumulus recover added by czl
         cmd = nodeinfo.getCumulusRecoveryCommand();
         if (cmd != null) {
-			cmds.add(cmd);
 			FSNamesystem.LOG.info("node get recover guide : "+nodeinfo.toString());
-			FSNamesystem.LOG.info("   "+((CumulusRecoveryCommand)cmd).getBlocks()[0].getBlockId());
-			//FSNamesystem.LOG.info("   "+((CumulusRecoveryCommand)cmd).getMatrix());
+			if (isBlockTokenEnabled) {
+				int size = ((CumulusRecoveryCommand)cmd).getSize();
+				for (int i = 0; i < size; i++) {
+					Token<BlockTokenIdentifier> token = 
+				        blockTokenSecretManager.generateToken(((CumulusRecoveryCommand)cmd).getLocatedBlk(i).getBlock(), 
+				            EnumSet.of(BlockTokenSecretManager.AccessMode.READ));
+				    
+					((CumulusRecoveryCommand)cmd).getLocatedBlk(i).setBlockToken(token);
+				}
+			}
+			cmds.add(cmd);
 		}
         //check pending replication
         cmd = nodeinfo.getReplicationCommand(

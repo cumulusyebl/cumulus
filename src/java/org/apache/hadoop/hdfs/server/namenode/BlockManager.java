@@ -853,10 +853,15 @@ public class BlockManager {
 	        // get a newComer
 	        Vector<BlockInfo> blockInfo = new Vector<BlockInfo>();
 	        newComer = chooseNewComer(block, blockInfo);
-	        if (newComer==null) {
+	        if (newComer == null) {
 	        	return false;
 	         }
-	        newComer.addBlockToBeRecoveredCumulus(blockInfo.remove(0));
+	        BlockInfo lostBlock = blockInfo.remove(0);
+	        newComer.addBlockToBeRecoveredCumulus(lostBlock);
+	        
+	        List<Block> list = new ArrayList<Block>();
+	        list.add(lostBlock);
+	        lostBlock.getDatanode(0).addBlocksToBeInvalidated(list);
 	        
 	        neededReplications.remove(block, priority); // remove from neededReplications
 	        replIndex--;

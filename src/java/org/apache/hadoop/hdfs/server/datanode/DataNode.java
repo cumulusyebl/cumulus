@@ -59,6 +59,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.LocalFileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
+import org.apache.hadoop.hdfs.BlockReader;
 import org.apache.hadoop.hdfs.DFSConfigKeys;
 import org.apache.hadoop.hdfs.HDFSPolicyProvider;
 import org.apache.hadoop.hdfs.HdfsConfiguration;
@@ -118,6 +119,7 @@ import org.apache.hadoop.security.authorize.AccessControlList;
 import org.apache.hadoop.security.token.Token;
 import org.apache.hadoop.security.token.TokenIdentifier;
 import org.apache.hadoop.util.Daemon;
+import org.apache.hadoop.util.DataChecksum;
 import org.apache.hadoop.util.DiskChecker;
 import org.apache.hadoop.util.GenericOptionsParser;
 import org.apache.hadoop.util.ReflectionUtils;
@@ -1066,18 +1068,7 @@ public class DataNode extends Configured
     case DatanodeProtocol.DNA_CUMULUS_RECOVERY:
     	LOG.info("DNA_CUMULUS_RECOVERY");
     	CumulusRecoveryCommand ccmdCommand = (CumulusRecoveryCommand)cmd;
-    	Block[] bs = ccmdCommand.getBlocks();
-    	for (int i = 0; i < bs.length; i++) {
-			LOG.info("..."+bs[i].getBlockId());
-		}
-    	DatanodeInfo[][] ta = ccmdCommand.getTargets();
-    	for (int i = 0; i < ta.length; i++) {
-			for (int j = 0; j < ta[i].length; j++) {
-				LOG.info("       "+ta[i][j].getName());
-			}
-		}
-    	LOG.info("      "+ccmdCommand.getMatrix().toString());
-    	new Thread(new CumulusRecovery(ccmdCommand.getLostColumn(), ccmdCommand.getBlocks(), ccmdCommand.getTargets(), ccmdCommand.getMatrix())).start();
+    	new Thread(new CumulusRecovery(ccmdCommand.getLostColumn(), ccmdCommand.getLocatedBlks(), ccmdCommand.getMatrix())).start();
     	break;
     default:
       LOG.warn("Unknown DatanodeCommand action: " + cmd.getAction());
@@ -1437,21 +1428,13 @@ public class DataNode extends Configured
    * cumulus lost recovery daemon
    */
   class CumulusRecovery implements Runnable{
-	  Block[] blocks;
-	  DatanodeInfo[] targets;
+	  LocatedBlock[] locatedBlks;
 	  CodingMatrix matrix;
 	  byte lostColumn;
 	  
-	  public CumulusRecovery(byte lostColumn, Block[] blocks, DatanodeInfo[][] targets, CodingMatrix matrix){
+	  public CumulusRecovery(byte lostColumn, LocatedBlock[] locatedblks, CodingMatrix matrix){
 		  this.lostColumn = lostColumn;
-		  this.blocks = new Block[blocks.length];
-		  for (int i = 0; i < blocks.length; i++) {
-			  this.blocks[i] = blocks[i];
-		  }
-		  this.targets = new DatanodeInfo[targets.length];
-		  for (int i = 0; i < targets.length; i++) {
-			this.targets[i] = targets[i][0];
-		  }
+		  this.locatedBlks = locatedblks;
 		  this.matrix = new CodingMatrix(matrix);
 		  LOG.info("constructor..............");
 	  }
@@ -1502,6 +1485,163 @@ public class DataNode extends Configured
 		  
 		  for (int i = 0; i < coeffients.length; i++) {
 			LOG.info(" "+coeffients[i]+"\n");
+		}
+		  
+		  
+		  for (int i = 0; i < locatedBlks.length; i++) {
+			LOG.info(locatedBlks[i].toString());
+		}
+		BlockReader[] brs = new BlockReader[matrix.getRow()];
+		  int j = 0;
+		  for (int i = 0; i < locatedBlks.length && j < brs.length; i++) {
+			if (i != lostColumn) {
+				Socket socket = new Socket();			
+				try {
+					NetUtils.connect(socket, NetUtils.createSocketAddr(locatedBlks[i].getLocations()[0].getName()), 1000);
+					brs[j] = BlockReader.newBlockReader(socket, "cumulus lost recover", locatedBlks[i].getBlock(), locatedBlks[i].getBlockToken(), 0, locatedBlks[i].getBlockSize(), 1024*1024*4);
+					j++;
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					LOG.info(e.toString());
+				}
+			}
+		}
+		  
+		LOG.info("block readers created.........");
+		
+		if (j < matrix.getRow()) {
+			LOG.info("cumulus lost recover failed because no enough complete blocks");
+		}
+		else {
+			
+			ReplicaInPipelineInterface replicaInfo = null;
+			FSDataset.BlockWriteStreams streams = null;
+			OutputStream out = null;
+			DataOutputStream checksumOut = null;
+			DataChecksum checksum = null;
+			long bytesCount = 0;
+			byte[] lastChecksum = new byte[4];
+			try {
+				 checksum = DataChecksum.newDataChecksum(DataChecksum.CHECKSUM_CRC32, 512);
+				 replicaInfo = data.createRbw(locatedBlks[lostColumn].getBlock());
+				 streams = replicaInfo.createStreams(true, 512, 4);//need to reconsider
+				 out = streams.dataOut;
+				 checksumOut = new DataOutputStream(new BufferedOutputStream(
+                         									streams.checksumOut, 
+                         									SMALL_BUFFER_SIZE));
+				 BlockMetadataHeader.writeHeader(checksumOut, checksum);
+				 
+			} catch (IOException e2) {
+				// TODO Auto-generated catch block
+				LOG.info(e2.toString());
+			}
+			
+			LOG.info("streams created.....");
+			
+			
+			int UnitLen = 512;
+			byte[][] readBytes = new byte[matrix.getRow()][UnitLen];
+			int[] readLen = new int[matrix.getRow()];
+			int maxLen;
+			
+			while(true){
+				
+				maxLen = -1;
+				for (int i = 0; i < brs.length; i++) {
+					try {
+						readLen[i] = brs[i].read(readBytes[i]);
+						if (readLen[i] > maxLen) {
+							maxLen = readLen[i];
+						}
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					} 
+				}
+				
+				LOG.info("maxLen: "+maxLen);
+				
+				if (maxLen==-1) {
+					
+					break;
+				}
+				
+				short[] input = new short[maxLen];
+				short[] output = new short[maxLen];
+				
+				for (int i = 0; i < output.length; i++) {
+					output[i] = 0; 
+				}
+				
+				int k = matrix.getRow();
+				for (int i = 0; i < k; i++){	
+					  if(coeffients[i] != 0){
+						  for (int p = 0; p < readLen[i]; p++)
+						  {
+							  if (readBytes[i][p] < 0)
+								  input[p] = (short)(readBytes[i][p] + 256);
+							  else 
+								  input[p] = (short)readBytes[i][p];
+						  }
+						  for(int m = 0;m< readLen[i];m++)
+						  {
+							  	output[m] ^= RSCoderProtocol.mult[input[m]][coeffients[i]];
+						  }
+					
+					  }				  
+			  }
+				
+				byte[] outByte = new byte[output.length];
+				for (int i = 0; i < outByte.length; i++) {
+					outByte[i] = (byte)output[i]; 
+				}
+				try {
+					bytesCount += maxLen;
+					checksum.update(outByte, 0, maxLen);
+					out.write(outByte, 0, maxLen);
+					
+					int integer = (int) checksum.getValue();
+					lastChecksum[0] = (byte)((integer >>> 24) & 0xFF);
+			       lastChecksum[1] = (byte)((integer >>> 16) & 0xFF);
+			       lastChecksum[2] = (byte)((integer >>>  8) & 0xFF);
+			       lastChecksum[3] = (byte)((integer >>>  0) & 0xFF);
+				   
+					checksumOut.write(lastChecksum);
+					checksum.reset();
+					
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					LOG.info(e.toString());
+				}
+				
+			
+			}
+			
+			LOG.info("close//////////");
+			try {
+				out.flush();
+				out.close();
+				checksumOut.flush();
+				checksumOut.close();
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				LOG.info(e.toString());
+			}
+			
+			try {
+				
+				replicaInfo.setNumBytes(bytesCount);
+				replicaInfo.setBytesAcked(bytesCount);
+				LOG.info("finalize////////////");
+				locatedBlks[lostColumn].getBlock().setNumBytes(bytesCount);
+				data.finalizeBlock(locatedBlks[lostColumn].getBlock());
+				myMetrics.blocksWritten.inc();
+				closeBlock(locatedBlks[lostColumn].getBlock(), DataNode.EMPTY_DEL_HINT);
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				LOG.info(e.toString());
+			}
+	
 		}
 		
 	  }

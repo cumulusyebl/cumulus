@@ -405,7 +405,6 @@ public class DatanodeDescriptor extends DatanodeInfo {
 		  NameNode.LOG.info("hahahhhahah"+dnds[0].toString()+"    "+blkInfo.getBlockId());
 		  if (blkInfo.getBlockId() == blockInfo.getBlockId()) {
 			lostColumn = i;
-			continue;
 		}
 		  i++;
 		  blockTargetPairs.add(new BlockTargetPair((Block)blkInfo, dnds));

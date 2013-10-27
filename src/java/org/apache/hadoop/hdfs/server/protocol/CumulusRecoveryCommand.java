@@ -7,14 +7,14 @@ import java.util.List;
 
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
-import org.apache.hadoop.hdfs.protocol.Block;
-import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.CodingMatrix;
-import org.apache.hadoop.hdfs.server.namenode.NameNode;
+import org.apache.hadoop.hdfs.protocol.LocatedBlock;
+import org.apache.hadoop.hdfs.security.token.block.BlockTokenIdentifier;
 import org.apache.hadoop.hdfs.server.namenode.DatanodeDescriptor.BlockTargetPair;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.io.WritableFactories;
 import org.apache.hadoop.io.WritableFactory;
+import org.apache.hadoop.security.token.Token;
 
 
 /**
@@ -25,8 +25,7 @@ import org.apache.hadoop.io.WritableFactory;
 @InterfaceAudience.Private
 @InterfaceStability.Evolving
 public class CumulusRecoveryCommand extends DatanodeCommand{
-	Block blocks[];
-	DatanodeInfo targets[][];
+	LocatedBlock[] locatedblks;
 	CodingMatrix matrix;
 	byte lostColumn;
 	
@@ -37,23 +36,30 @@ public class CumulusRecoveryCommand extends DatanodeCommand{
 	public CumulusRecoveryCommand(int action, byte lostColumn, CodingMatrix matrix, List<BlockTargetPair> blockTargetPairs){
 		super(action);
 		this.lostColumn = lostColumn;
-		blocks = new Block[blockTargetPairs.size()]; 
-	    targets = new DatanodeInfo[blocks.length][];
-	    for(int i = 0; i < blocks.length; i++) {
+		locatedblks = new LocatedBlock[blockTargetPairs.size()];
+		for(int i = 0; i < locatedblks.length; i++) {
 	      BlockTargetPair p = blockTargetPairs.get(i);
-	      blocks[i] = p.block;
-	      targets[i] = p.targets;
+	      locatedblks[i]= new LocatedBlock(p.block, p.targets); 
 	    }
 	    this.matrix = matrix;
 	}
-
-	public Block[] getBlocks() {
-		return blocks;
+	
+	public LocatedBlock getLocatedBlk(int i){
+		return locatedblks[i];
+	}
+	
+	public LocatedBlock[] getLocatedBlks() {
+		return locatedblks;
+	}
+	
+	public void setBlockToken(int i, Token<BlockTokenIdentifier> token) {
+		locatedblks[i].setBlockToken(token);
+	}
+	
+	public int getSize(){
+		return locatedblks.length;
 	}
 
-	public DatanodeInfo[][] getTargets() {
-		return targets;
-	}
 	
 	public CodingMatrix getMatrix() {
 		return matrix;
@@ -78,16 +84,9 @@ public class CumulusRecoveryCommand extends DatanodeCommand{
 	  public void write(DataOutput out) throws IOException {
 	    super.write(out);
 	    out.write(lostColumn);
-	    out.writeInt(blocks.length);
-	    for (int i = 0; i < blocks.length; i++) {
-	      blocks[i].write(out);
-	    }
-	    out.writeInt(targets.length);
-	    for (int i = 0; i < targets.length; i++) {
-	      out.writeInt(targets[i].length);
-	      for (int j = 0; j < targets[i].length; j++) {
-	        targets[i][j].write(out);
-	      }
+	    out.writeInt(locatedblks.length);
+	    for (int i = 0; i < locatedblks.length; i++) {
+	      locatedblks[i].write(out);
 	    }
 	    matrix.write(out);
 	  }
@@ -95,19 +94,10 @@ public class CumulusRecoveryCommand extends DatanodeCommand{
 	  public void readFields(DataInput in) throws IOException {
 	    super.readFields(in);
 	    this.lostColumn = in.readByte();
-	    this.blocks = new Block[in.readInt()];
-	    for (int i = 0; i < blocks.length; i++) {
-	      blocks[i] = new Block();
-	      blocks[i].readFields(in);
-	    }
-
-	    this.targets = new DatanodeInfo[in.readInt()][];
-	    for (int i = 0; i < targets.length; i++) {
-	      this.targets[i] = new DatanodeInfo[in.readInt()];
-	      for (int j = 0; j < targets[i].length; j++) {
-	        targets[i][j] = new DatanodeInfo();
-	        targets[i][j].readFields(in);
-	      }
+	    this.locatedblks = new LocatedBlock[in.readInt()];
+	    for (int i = 0; i < locatedblks.length; i++) {
+	      locatedblks[i] = new LocatedBlock();
+	      locatedblks[i].readFields(in);
 	    }
 	    matrix = new CodingMatrix();
 	    matrix.readFields(in);

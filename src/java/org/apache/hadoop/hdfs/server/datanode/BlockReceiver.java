@@ -132,6 +132,8 @@ class BlockReceiver implements java.io.Closeable, FSConstants {
       this.bytesPerChecksum = checksum.getBytesPerChecksum();
       this.checksumSize = checksum.getChecksumSize();
       
+     
+      
       boolean isCreate = stage == BlockConstructionStage.PIPELINE_SETUP_CREATE 
       || clientName.length() == 0;
       streams = replicaInfo.createStreams(isCreate,
