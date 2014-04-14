@@ -22,6 +22,7 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.net.URI;
@@ -82,8 +83,10 @@ public class FSImage extends Storage {
     TIME      ("fstime"),
     EDITS     ("edits"),
     IMAGE_NEW ("fsimage.ckpt"),
-    EDITS_NEW ("edits.new");
+    EDITS_NEW ("edits.new"),
     
+    /*add by tony,the file for headers*/
+    HEADER_STORAGE  ("headstorage");
     private String fileName = null;
     private NameNodeFile(String name) {this.fileName = name;}
     String getName() {return fileName;}
@@ -121,6 +124,8 @@ public class FSImage extends Storage {
   protected MD5Hash imageDigest = null;
   protected MD5Hash newImageDigest = null;
 
+  /**added by tony**/
+  protected File bufferStorage=null;
   /**
    * flag that controls if we try to restore failed storages
    */
@@ -288,6 +293,25 @@ public class FSImage extends Storage {
     return new File(sd.getCurrentDir(), type.getName());
   }
   
+ /**
+   * @author tony
+   * create the storagefile for headers
+   */
+  static File getHStorageFile(StorageDirectory sd)
+  {
+	NameNode.LOG.info("getHStorageFile in FSImage----------TONY");
+	  return new File(sd.getCurrentDir(),NameNodeFile.HEADER_STORAGE.getName());
+  }
+  /**
+   * @author tony
+   * @return the stub of file bufferStorage
+   */
+  public File getBufferStorage()
+  {
+	  return this.bufferStorage;
+  }
+  
+
   List<StorageDirectory> getRemovedStorageDirs() {
     return this.removedStorageDirs;
   }
@@ -1064,7 +1088,7 @@ public class FSImage extends Storage {
     return needToSave;
   }
 
-  /**
+    /** modified by tony 
    * Load in the filesystem image from file. It's a big list of
    * filenames and blocks.  Return whether we should
    * "re-save" and consolidate the edit-logs
@@ -1072,7 +1096,15 @@ public class FSImage extends Storage {
   boolean loadFSImage(File curFile) throws IOException {
     FSImageFormat.Loader loader = new FSImageFormat.Loader(conf);
     loader.load(curFile, getFSNamesystem());
-
+    /*add by tony*/ 
+    if(this.bufferStorage==null)
+    {
+    	NameNode.LOG.info("Create bufferStorage File in FSImage-------------TONY");
+    	String parentDir=curFile.getAbsoluteFile().getParent();
+    	this.bufferStorage=new File(parentDir+File.separator+
+    			NameNodeFile.HEADER_STORAGE.getName());
+	NameNode.LOG.info("bufferStorage: "+this.bufferStorage+"------TONY");
+    }
 
     // Check that the image digest we loaded matches up with what
     // we expected
@@ -1316,7 +1348,17 @@ public class FSImage extends Storage {
     if (!curDir.exists() && !curDir.mkdir())
       throw new IOException("Cannot create directory " + curDir);
     if (dirType.isOfType(NameNodeDirType.IMAGE))
+    {
       saveFSImage(getImageFile(sd, NameNodeFile.IMAGE));
+       /**
+       * add by tony
+       */
+      if(this.bufferStorage==null)
+	{
+	 NameNode.LOG.info("Create bufferStorage File in FSImage saveCurrent -------TONY");
+      	this.bufferStorage=getHStorageFile(sd);
+	}
+    }
     if (dirType.isOfType(NameNodeDirType.EDITS))
       editLog.createEditLogFile(getImageFile(sd, NameNodeFile.EDITS));
     // write version and time files

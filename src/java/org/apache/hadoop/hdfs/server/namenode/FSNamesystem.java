@@ -1382,7 +1382,7 @@ public class FSNamesystem implements FSConstants, FSNamesystemMBean, FSClusterSt
 	  }
 	  return matrix;
   }
-  /**
+  /**modified by tony
    * Create new or open an existing file for append.<p>
    * 
    * In case of opening the file for append, the method returns the last
@@ -1497,7 +1497,7 @@ public class FSNamesystem implements FSConstants, FSNamesystemMBean, FSClusterSt
                                         node.getPermissionStatus(),
                                         holder,
                                         clientMachine,
-                                        clientNode);
+                                        clientNode,dir.getHeaderBuffer());
         dir.replaceNode(src, node, cons);
         leaseManager.addLease(cons.getClientName(), src);
 
@@ -1540,7 +1540,7 @@ public class FSNamesystem implements FSConstants, FSNamesystemMBean, FSClusterSt
     }
     return null;
   }
-  /**
+  /**modified by tony
    * @author vither
    */
   private CodingMatrix startFileInternal(String src, long fileSize, long packetSize,
@@ -1641,7 +1641,7 @@ public class FSNamesystem implements FSConstants, FSNamesystemMBean, FSClusterSt
 						                    node.getPermissionStatus(),
 						                    holder,
 						                    clientMachine,
-						                    clientNode);
+						                    clientNode,dir.getHeaderBuffer());
 	        dir.replaceNode(src, node, cons);
 	        leaseManager.addLease(cons.getClientName(), src);
 
@@ -2107,7 +2107,8 @@ public class FSNamesystem implements FSConstants, FSNamesystemMBean, FSClusterSt
           LOG.info("BLOCK* NameSystem.checkFileProgress: "
               + "block " + block + " has not reached minimal replication "
               + blockManager.minReplication);
-          return false;
+          // 1-8 change by tianshan
+//          return false;
         }
       }
     } else {
@@ -3077,6 +3078,7 @@ public class FSNamesystem implements FSConstants, FSNamesystemMBean, FSClusterSt
 			FSNamesystem.LOG.info("node get recover guide : "+nodeinfo.toString());
 			if (isBlockTokenEnabled) {
 				int size = ((CumulusRecoveryCommand)cmd).getSize();
+				FSNamesystem.LOG.info("matrix:  " + ((CumulusRecoveryCommand)cmd).getMatrix().toString());
 				for (int i = 0; i < size; i++) {
 					Token<BlockTokenIdentifier> token = 
 				        blockTokenSecretManager.generateToken(((CumulusRecoveryCommand)cmd).getLocatedBlk(i).getBlock(), 

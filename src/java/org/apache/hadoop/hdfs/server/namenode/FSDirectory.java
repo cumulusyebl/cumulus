@@ -66,6 +66,9 @@ class FSDirectory implements Closeable {
 
   INodeDirectoryWithQuota rootDir;
   FSImage fsImage;  
+
+ 
+
   private volatile boolean ready = false;
   private static final long UNKNOWN_DISK_SPACE = -1;
   private final int lsLimit;  // max list limit
@@ -74,6 +77,13 @@ class FSDirectory implements Closeable {
   private ReentrantReadWriteLock bLock;
   private Condition cond;
 
+  /*add by tony*/
+  HeaderBuffer headerBuffer=null;
+
+  public HeaderBuffer getHeaderBuffer()
+  {
+	  return this.headerBuffer;
+  }
   // utility methods to acquire and release read lock and write lock
   void readLock() {
     this.bLock.readLock().lock();
@@ -150,6 +160,15 @@ class FSDirectory implements Closeable {
       if (fsImage.recoverTransitionRead(dataDirs, editsDirs, startOpt)) {
         fsImage.saveNamespace(true);
       }
+
+	 /**
+       * add by tony
+       * the singleton headerBufferInstance,the buffer size is 100 by default
+       */
+
+      this.headerBuffer=HeaderBuffer.Instance(100,fsImage.getBufferStorage());
+       NameNode.LOG.info("headerBuffer instance in FSDirectory"+"---------------TONY");
+	 NameNode.LOG.info("headerBuffer instance: "+this.headerBuffer+"------------TONY");
       FSEditLog editLog = fsImage.getEditLog();
       assert editLog != null : "editLog must be initialized";
       fsImage.setCheckpointDirectories(null, null);
@@ -252,7 +271,7 @@ class FSDirectory implements Closeable {
 //    return newNode;
 	  return null;
   }
-  /**
+  /**modified by tony
    * @author vither
    */
   INodeFileUnderConstruction addFile(String path,
@@ -274,14 +293,22 @@ class FSDirectory implements Closeable {
 	        modTime)) {
 	      return null;
 	    }
-	    CodingMatrix matrix = new CodingMatrix(fileSize);
+	    
+	    //revised by czl
+	    byte type = CodingMatrix.chooseMatrix(fileSize);
+	    CodingMatrix matrix = CodingMatrix.getMatrixofCertainType(type);
+
 	    INodeFileUnderConstruction newNode = new INodeFileUnderConstruction(
 	                                 permissions, matrix,
 	                                 fileSize, packetSize, modTime, clientName, 
-	                                 clientMachine, clientNode);
+	                                 clientMachine, clientNode,this.headerBuffer);
+	    
+	    newNode.setType(type);
 	    writeLock();
 	    try {
 	      newNode = addNode(path, newNode, UNKNOWN_DISK_SPACE, false);
+	      NameNode.LOG.info("FSDirectory addFile newNode path: "+newNode.getFullPathName()+"-----------TONY");
+	      newNode.serializeHeader();
 	    } finally {
 	      writeUnlock();
 	    }
@@ -303,7 +330,7 @@ class FSDirectory implements Closeable {
 	  
   }
   /**
-   * 
+   *modified by tony 
    */
   INode unprotectedAddFile( String path, 
                             PermissionStatus permissions,
@@ -320,15 +347,18 @@ class FSDirectory implements Closeable {
     if (blocks == null)
       newNode = new INodeDirectory(permissions, modificationTime);
     else {
+		//modified by tony
       newNode = new INodeFile(permissions, codingMatrix, blocks,
-                              modificationTime, atime, fileSize, 65536);
+                              modificationTime, atime, fileSize, 65536,this.headerBuffer);
       diskspace = ((INodeFile)newNode).diskspaceConsumed(blocks);
     }
     writeLock();
     try {
       try {
         newNode = addNode(path, newNode, diskspace, false);
-        if(newNode != null && blocks != null) {
+        NameNode.LOG.info("FSDirectory uprotectedAddFile newNode path"+newNode.getFullPathName()+"-----------TONY");
+	    ((INodeFile)newNode).serializeHeader();
+	if(newNode != null && blocks != null) {
           int nrBlocks = blocks.length;
           // Add file->block mapping
           INodeFile newF = (INodeFile)newNode;
@@ -406,6 +436,10 @@ class FSDirectory implements Closeable {
 	  return null;
 	  
   }
+
+/**
+ *modified by tony
+ **/
   
   INodeDirectory addToParent( byte[][] src,
 						          INodeDirectory parentINode,
@@ -419,6 +453,7 @@ class FSDirectory implements Closeable {
 						          long dsQuota,
 						          CodingMatrix codingMatrix,
 						          long fileSize,
+						          byte type,
 						          long preferredBlockSize,
 						          boolean propagateModTime) 
 						          throws UnresolvedLinkException {
@@ -434,8 +469,10 @@ class FSDirectory implements Closeable {
 	        newNode = new INodeDirectory(permissions, modificationTime);
 	      }
 	    } else {
+			//modified by tony
 	      newNode = new INodeFile(permissions, codingMatrix,blocks,
-	                              modificationTime, atime, fileSize, 65536);
+	                              modificationTime, atime, fileSize, 65536,this.headerBuffer);
+	      ((INodeFile)newNode).setType(type);//added by czl
 	    }
 	    // add new node to the parent
 	    INodeDirectory newParent = null;
@@ -513,6 +550,7 @@ class FSDirectory implements Closeable {
   /**
    * Persist the block list for the inode.
    */
+
   void persistBlocks(String path, INodeFileUnderConstruction file) {
     waitForReady();
 
@@ -1244,7 +1282,7 @@ class FSDirectory implements Closeable {
     }
   }
 
-  /**
+  /**to modify  tony
    * Replaces the specified inode with the specified one.
    */
   public void replaceNode(String path, INodeFile oldnode, INodeFile newnode)

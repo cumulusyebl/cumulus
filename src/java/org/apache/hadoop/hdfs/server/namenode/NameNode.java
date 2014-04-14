@@ -58,6 +58,7 @@ import org.apache.hadoop.hdfs.protocol.FSConstants;
 import org.apache.hadoop.hdfs.protocol.HdfsFileStatus;
 import org.apache.hadoop.hdfs.protocol.LocatedBlock;
 import org.apache.hadoop.hdfs.protocol.LocatedBlocks;
+import org.apache.hadoop.hdfs.protocol.RSCoderProtocol;
 import org.apache.hadoop.hdfs.protocol.UnregisteredNodeException;
 import org.apache.hadoop.hdfs.protocol.UnresolvedPathException;
 import org.apache.hadoop.hdfs.security.token.block.ExportedBlockKeys;
@@ -390,6 +391,11 @@ public class NameNode implements NamenodeProtocols, FSConstants {
     if (serviceRPCAddress != null) {
       LOG.info(getRole() + " service server is up at: " + serviceRPCAddress); 
     }
+    
+    /**
+     * added by czl
+     */
+    new fillTable().start();
   }
 
   /**
@@ -1594,5 +1600,17 @@ public class NameNode implements NamenodeProtocols, FSConstants {
   public long getFileLength(String src) throws UnresolvedLinkException {
   	// TODO Auto-generated method stub
   	return namesystem.getFileLengthInternal(src);
+  }
+  
+  /**
+   * added by czl to shorten generating time of rs table
+   */
+  
+  class fillTable extends Thread{
+	  
+	  public void run() {
+		RSCoderProtocol.getRSP();
+		NameNode.LOG.info("fill RS table");
+	}
   }
 }

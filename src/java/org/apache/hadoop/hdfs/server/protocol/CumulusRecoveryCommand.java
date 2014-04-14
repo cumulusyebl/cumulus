@@ -27,14 +27,16 @@ import org.apache.hadoop.security.token.Token;
 public class CumulusRecoveryCommand extends DatanodeCommand{
 	LocatedBlock[] locatedblks;
 	CodingMatrix matrix;
+	byte type;
 	byte lostColumn;
 	
 	
 	public CumulusRecoveryCommand() {	}
 	
 	
-	public CumulusRecoveryCommand(int action, byte lostColumn, CodingMatrix matrix, List<BlockTargetPair> blockTargetPairs){
+	public CumulusRecoveryCommand(int action, byte type, byte lostColumn, CodingMatrix matrix, List<BlockTargetPair> blockTargetPairs){
 		super(action);
+		this.type = type;
 		this.lostColumn = lostColumn;
 		locatedblks = new LocatedBlock[blockTargetPairs.size()];
 		for(int i = 0; i < locatedblks.length; i++) {
@@ -88,6 +90,7 @@ public class CumulusRecoveryCommand extends DatanodeCommand{
 	    for (int i = 0; i < locatedblks.length; i++) {
 	      locatedblks[i].write(out);
 	    }
+	    out.write(type);
 	    matrix.write(out);
 	  }
 
@@ -99,7 +102,8 @@ public class CumulusRecoveryCommand extends DatanodeCommand{
 	      locatedblks[i] = new LocatedBlock();
 	      locatedblks[i].readFields(in);
 	    }
-	    matrix = new CodingMatrix();
+	    byte type = in.readByte();
+	    matrix = CodingMatrix.getMatrixofCertainType(type);
 	    matrix.readFields(in);
 	  }
 

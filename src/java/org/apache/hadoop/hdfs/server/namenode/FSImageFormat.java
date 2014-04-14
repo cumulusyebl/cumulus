@@ -271,9 +271,13 @@ class FSImageFormat {
           }
           
           
-          	CodingMatrix codingMatrix = new CodingMatrix();
+          	CodingMatrix codingMatrix = null;
+          	//revised by czl
+          	byte type = 0;
           	if (numBlocks>0) {
           		fileSize = in.readLong();
+          		type = in.readByte();
+          		codingMatrix = CodingMatrix.getMatrixofCertainType(type);
 				codingMatrix.readFields(in);
 			}
           	
@@ -296,7 +300,7 @@ class FSImageFormat {
           // without propagating modification time to parent
           parentINode = fsDir.addToParent(pathComponents, parentINode, permissions,
                                           blocks, symlink, replication, modificationTime, 
-                                          atime, nsQuota, dsQuota, codingMatrix, fileSize, blockSize, false);
+                                          atime, nsQuota, dsQuota, codingMatrix, fileSize, type, blockSize, false);
         }
 
         // load datanode info

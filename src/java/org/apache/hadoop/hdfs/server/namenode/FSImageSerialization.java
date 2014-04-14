@@ -192,6 +192,7 @@ public class FSImageSerialization {
                              filePerm);
       
       out.writeLong(fileINode.getFileSize());
+      out.write(fileINode.getType());
       fileINode.getMatrix().write(out);
       
     }

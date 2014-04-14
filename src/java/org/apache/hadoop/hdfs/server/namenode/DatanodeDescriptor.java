@@ -411,7 +411,7 @@ public class DatanodeDescriptor extends DatanodeInfo {
 	  }
 	  CodingMatrix matrix = filenode.getMatrix();
 	  FSNamesystem.LOG.info(lostColumn+"   .............    ");
-	  return new CumulusRecoveryCommand(DatanodeProtocol.DNA_CUMULUS_RECOVERY, lostColumn, matrix, blockTargetPairs);
+	  return new CumulusRecoveryCommand(DatanodeProtocol.DNA_CUMULUS_RECOVERY, filenode.getType(), lostColumn, matrix, blockTargetPairs);
   }
   
   BlockCommand getReplicationCommand(int maxTransfers) {

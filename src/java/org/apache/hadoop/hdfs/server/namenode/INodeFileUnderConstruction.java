@@ -30,6 +30,9 @@ class INodeFileUnderConstruction extends INodeFile {
   private final String clientMachine;
   private final DatanodeDescriptor clientNode; // if client is a cluster node too.
   
+ /**
+   * modified by tony
+   */
   INodeFileUnderConstruction(PermissionStatus permissions,
                              CodingMatrix matrix,
                              long fileSize,
@@ -37,14 +40,17 @@ class INodeFileUnderConstruction extends INodeFile {
                              long modTime,
                              String clientName,
                              String clientMachine,
-                             DatanodeDescriptor clientNode) {
+                             DatanodeDescriptor clientNode,HeaderBuffer headerbuf) {
     super(permissions.applyUMask(UMASK), matrix, modTime, modTime,
-        fileSize, packetSize);
+        fileSize, packetSize,headerbuf);
     this.clientName = clientName;
     this.clientMachine = clientMachine;
     this.clientNode = clientNode;
   }
 
+  /**
+   * modified by tony
+   */
   public INodeFileUnderConstruction(byte[] name,
                              CodingMatrix matrix,
                              long fileSize,
@@ -54,9 +60,9 @@ class INodeFileUnderConstruction extends INodeFile {
                              PermissionStatus perm,
                              String clientName,
                              String clientMachine,
-                             DatanodeDescriptor clientNode) {
+                             DatanodeDescriptor clientNode,HeaderBuffer headerbuf) {
     super(perm, matrix, blocks, modificationTime, modificationTime,
-          fileSize, packetSize);
+          fileSize, packetSize,headerbuf);
     setLocalName(name);
     this.clientName = clientName;
     this.clientMachine = clientMachine;
@@ -91,6 +97,10 @@ class INodeFileUnderConstruction extends INodeFile {
   // converts a INodeFileUnderConstruction into a INodeFile
   // use the modification time as the access time
   //
+ /**
+   * modified by tony
+   * @return
+   */
   INodeFile convertToInodeFile() {
     INodeFile obj = new INodeFile(getPermissionStatus(),
                                   getMatrix(),
@@ -98,7 +108,7 @@ class INodeFileUnderConstruction extends INodeFile {
                                   getModificationTime(),
                                   getModificationTime(),
                                   getFileSize(),
-                                  getPacketSize());
+                                  getPacketSize(),getHeaderBuffer());
     return obj;
     
   }

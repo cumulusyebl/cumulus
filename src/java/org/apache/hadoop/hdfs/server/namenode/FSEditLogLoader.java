@@ -167,6 +167,7 @@ public class FSEditLogLoader {
           }
           
           long fileSize = readLong(in);
+          byte type = (byte)readLong(in);
           
           // get blocks
           boolean isFileUnderConstruction = (opcode == Ops.OP_ADD);
@@ -190,7 +191,7 @@ public class FSEditLogLoader {
           if (logVersion <= -11) {
             permissions = PermissionStatus.read(in);
           }
-          	CodingMatrix codingMatrix = new CodingMatrix();
+          	CodingMatrix codingMatrix = CodingMatrix.getMatrixofCertainType(type);
           	codingMatrix.readFields(in);
 
           // clientname, clientMachine and block locations of last block.

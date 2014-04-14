@@ -36,32 +36,54 @@ class INodeFile extends INode {
   static final int packetSizeStart = 6; 
   static final int matrixStart = 12; 
   static final int headerSize = 128;
+  
+  //added by czl
+  static byte matrixType = 0;
   //Header mask 64-bit representation
   //Format: [16 bits for replication][48 bits for PreferredBlockSize]
-//  static final long HEADERMASK = 0xffffL << BLOCKBITS;
+  //  static final long HEADERMASK = 0xffffL << BLOCKBITS;
 
   protected byte[] header;
-
+  
+  /*add by tony*/
+  protected HeaderBuffer headerbuffer=null;
+  
   protected BlockInfo blocks[] = null;
-
+  
+  
+  /*modified by tony*/
   INodeFile(PermissionStatus permissions, CodingMatrix codingMatrix,
           long modificationTime,
-          long atime, long fileSize, long packetSize) {
-  this(permissions, codingMatrix, null, modificationTime, atime, fileSize, packetSize);
+          long atime, long fileSize, long packetSize,HeaderBuffer headerbuf) {
+  this(permissions, codingMatrix, null, modificationTime, atime, fileSize, packetSize,headerbuf);
   }
 
   protected INodeFile() {
     blocks = null;
-    header = new byte[headerSize];
+    //header = new byte[headerSize];
+    header = null;
+     NameNode.LOG.info("INodeFile Default Constructor---------TONY");
   }
-
+   /**
+    *  modified by tony
+    */
   protected INodeFile(PermissionStatus permissions, CodingMatrix codingMatrix, BlockInfo[] blklist,
-          long modificationTime, long atime, long fileSize, long packetSize) {
+          long modificationTime, long atime, long fileSize, long packetSize,HeaderBuffer headerbuf) {
 	super(permissions, modificationTime, atime);
+	
 	header = new byte[headerSize];
+	
+	/********************/
+	this.setHeaderBuffer(headerbuf);
+	
 	this.setFileSize(fileSize);
 	this.setPacketSize(packetSize);
 	this.setMatrix(codingMatrix);
+	/*************/
+	//serializeHeader();
+	
+	//header=null;
+	
 	blocks = blklist;
 }
 
@@ -85,12 +107,71 @@ class INodeFile extends INode {
   public short getReplication() {
     return 1;
   }
-
+  
+  
+  public void setType(byte type){
+	  this.matrixType = type;
+  }
+  
+  public byte getType() {
+	  return matrixType;
+}
+  /**
+   * @author tony
+   * serialize the header vector into the buffer
+   * 
+   */
+   public void serializeHeader()
+   {
+	NameNode.LOG.info("INodeFile serializeHeader path: "+getFullPathName()+"--------TONYds");
+	this.headerbuffer.put(getFullPathName(), header);
+	this.header=null;
+   }
+   /** @author tony
+    *  get the header vector from the buffer
+    *  @param path  the absolute path of this file
+    *  @return the header vector
+    * */
+   public byte[] fetchBufferData(String path)
+   {
+ 	NameNode.LOG.info("in fetchBufferData in INodeFile-----------TONY");
+	BufferData ans=this.headerbuffer.get(path);
+        NameNode.LOG.info("BufferData: "+ans+"----------TONY");
+	   return ans.getHead();
+   }
+   
+   /**
+    *  @author tony 
+    */
+   public HeaderBuffer getHeaderBuffer()
+   {
+	   return this.headerbuffer;
+   }
+   
+   /**
+    * @author tony
+    * @param headerbuf
+    */
+   public void setHeaderBuffer(HeaderBuffer headerbuf)
+   {
+	   this.headerbuffer=headerbuf;
+   }
+   
+  /**
+   *  Modified by tony 
+   *  
+   * @return
+   */
   public CodingMatrix getMatrix(){
+	  /****************/
+	  if(header==null)
+	  {
+		  header=fetchBufferData(getFullPathName());
+	  }
 	  int cur = matrixStart;
 	  byte row = header[cur++];
 	  byte column = header[cur++];
-	  CodingMatrix matrix = new CodingMatrix(row ,column);
+	  CodingMatrix matrix = CodingMatrix.getMatrixofCertainType(matrixType);
 	  for(int i = 0; i < row; ++i)
 		  for(int j = 0; j < column; ++j){
 			  matrix.setElemAt(i, j, header[cur++]);
@@ -114,11 +195,17 @@ class INodeFile extends INode {
 //    header = ((long)replication << BLOCKBITS) | (header & ~HEADERMASK);
 //  }
 
-  /**
+  /**Modified by tony
+   * 
    * Get preferred block size for the file
    * @return preferred block size in bytes
    */
   public long getFileSize() {
+	  /****************/
+	  if(header==null)
+	  {
+		  header=fetchBufferData(getFullPathName());
+	  }
       long blockSize = 0;
       int byteOfBlockSize = packetSizeStart - fileSizeStart;
       for(int i = 0; i < byteOfBlockSize; i ++){
@@ -134,8 +221,16 @@ class INodeFile extends INode {
 			 header[i] = (byte)((fileSize << (16+8*i)) >>> 56);
 		  }
   }
-  
+  /**
+   *  Modified by tony
+   * @return
+   */
   public long getPacketSize(){
+	   /****************/
+	   if(header==null)
+	   {
+		  header=fetchBufferData(getFullPathName());
+	   }
 	   long size = 0;
 	   for(int cur = packetSizeStart; cur < matrixStart; ++cur) {
 		   size |=  ((((long)header[cur])<<56)>>>(cur - packetSizeStart + 2) * 8);
@@ -340,3 +435,4 @@ class INodeFile extends INode {
     return blocks == null ? 0 : blocks.length;
   }
 }
+

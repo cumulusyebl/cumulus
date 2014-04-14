@@ -9,38 +9,20 @@ import org.apache.hadoop.hdfs.protocol.RSCoderProtocol;
 import java.util.List;
 
 import org.apache.hadoop.io.Writable;
-import org.apache.hadoop.io.WritableFactories;
-import org.apache.hadoop.io.WritableFactory;
+
 //TODO:
-public class CodingMatrix implements Writable{
+public abstract class CodingMatrix implements Writable{
 	byte[][] matrix;
 	byte row;
 	byte column;
+	
+	public static final byte XOR = 1;
+	public static final byte RS = 2;
+	
 	public CodingMatrix(){
 		row = 0;
 		column = 0;
 		matrix = null;
-	}
-	public CodingMatrix(long fileLength){
-		RSCoderProtocol rsp = RSCoderProtocol.getRSP();	
-		row = 3;
-		column = 4;
-		matrix=(byte[][])rsp.InitialCauchyMatrix(row, column);
-//		row = 3;
-//		column = 4;
-//		matrix = new byte[row][column];
-//		matrix[0][0] = 1;
-//		matrix[0][1] = 0;
-//		matrix[0][2] = 0;
-//		matrix[0][3] = 1;
-//		matrix[1][0] = 1;
-//		matrix[1][1] = 1;
-//		matrix[1][2] = 1;
-//		matrix[1][3] = 1;
-//		matrix[2][0] = 0;
-//		matrix[2][1] = 1;
-//		matrix[2][2] = 0;
-//		matrix[2][3] = 1;
 	}
 	
 	public CodingMatrix(CodingMatrix matrix) {
@@ -136,16 +118,23 @@ public class CodingMatrix implements Writable{
 		this.matrix[i][j] = b;
 	}
 	
- ///////////////////////////////////////////
-  // Writable
-  ///////////////////////////////////////////
-  static {                                      // register a ctor
-    WritableFactories.setFactory
-      (CodingMatrix.class,
-       new WritableFactory() {
-         public Writable newInstance() { return new CodingMatrix(); }
-       });
-  }
+	public static byte chooseMatrix(long fileLength){
+		//byte ran = (byte)(Math.random()*2);
+		byte ran = CodingMatrix.RS;
+		return ran;
+	}
+	
+	public static CodingMatrix getMatrixofCertainType(byte type){
+		switch (type) {
+		case CodingMatrix.XOR:
+			return new XORCoderProtocol();
+		case CodingMatrix.RS:
+			return new RSCoderProtocol((byte)3, (byte)4);
+		default:
+			return new RSCoderProtocol((byte)3, (byte)4);
+		}
+	}
+	
 	  
 	@Override
 	public void readFields(DataInput input) throws IOException {
@@ -167,4 +156,8 @@ public class CodingMatrix implements Writable{
 			}
 		
 	}
+	
+	public abstract byte mult(byte b1, byte element);
+	public abstract byte code(byte b1, byte b2, byte element);
+	public abstract int decoder(short[][] g,byte[][] Buf,int[] buflen,int offset,byte[] buf);
 }

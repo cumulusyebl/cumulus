@@ -668,7 +668,8 @@ public class FSEditLog {
       FSEditLog.toLogLong(newNode.getModificationTime()),
       FSEditLog.toLogLong(newNode.getAccessTime()),
       FSEditLog.toLogLong(64*1024*1024),
-      FSEditLog.toLogLong(newNode.getFileSize())};
+      FSEditLog.toLogLong(newNode.getFileSize()),
+      FSEditLog.toLogLong((long)(newNode.getType()))};
     logEdit(Ops.OP_CLOSE,
             new ArrayWritable(DeprecatedUTF8.class, nameReplicationPair),
             new ArrayWritable(Block.class, newNode.getBlocks()),

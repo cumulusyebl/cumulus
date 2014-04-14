@@ -24,6 +24,7 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.util.AbstractMap;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Vector;
@@ -627,52 +628,60 @@ public class DFSInputStream extends FSInputStream {
 
    // DFSClient.LOG.info("filelength: !!!!!!!"+fileLength);
     //DFSClient.LOG.info("BbyteLength: "+BbyteLength+" Bbyteposition: "+BbytePosition);
-	if (BbyteLength > 0){
+	if (BbyteLength > 0)
+	{
 	   	 len = (len>BbyteLength)?BbyteLength:len;
 	  // 	DFSClient.LOG.info("len: "+len+" buffersize: "+buf.length);//128K
 	   	 System.arraycopy(Bbyte, BbytePosition, buf, off, len);
 	   	 BbytePosition += len;
 	   	 BbyteLength -= len;
-	   	 if (fileLength>=len){
+	   	 if (fileLength>=len)
+	   	 {
 			 fileLength -= len;
 			 //DFSClient.LOG.info("return 1 len: "+len);
 			 return len;
 	   	 }
-		 else {
+		 else 
+		 {
 			 //DFSClient.LOG.info("return 1 len: "+fileLength);
 			 DFSClient.LOG.info("Cumulus read time consumption :"+ (System.currentTimeMillis()-startTime)+" ms");
 			 long fl = fileLength;
 			 fileLength = -1;
 			return (int) fl;
 		 }
-	 }
-    else {
-   	 BbyteLength = 0;
-   	 BbytePosition = 0;
+	}
+	else 
+    {
+    	BbyteLength = 0;
+    	BbytePosition = 0;
 		 int tmp = Decoding(Bbyte, 0);
-		 if(tmp>0){
+		 if(tmp>0)
+		 {
 			 len = (len>BbyteLength)?BbyteLength:len;
 			 //DFSClient.LOG.info("len: "+len+" buffersize: "+buf.length);//128K
 			 System.arraycopy(Bbyte, BbytePosition, buf, off, len);
 			 BbytePosition += len;
 	    	 BbyteLength -= len;
-	    	 if (fileLength>=len){
+	    	 if (fileLength>=len)
+	    	 {
 	    		 fileLength -= len;
 	    		 //DFSClient.LOG.info("return 2 len: "+len);
 	    		 return len;
 	    	 }
-	    	 else {
-	    		 //DFSClient.LOG.info("return 2 len: "+fileLength);
-	    		  DFSClient.LOG.info("Cumulus read time consumption : " +(System.currentTimeMillis()-startTime)+"ms");
-	    		 long fl = fileLength;
-	    		 fileLength = -1;
-				return (int) fl;
-			}
+	    	 else
+	    	 {
+				 //DFSClient.LOG.info("return 2 len: "+fileLength);
+				 DFSClient.LOG.info("Cumulus read time consumption : " +(System.currentTimeMillis()-startTime)+"ms");
+				 long fl = fileLength;
+				 fileLength = -1;
+				 return (int) fl;
+	    	 }
 		 }
-		 else {
+		 else 
+		 {
 			return -1;
-		}
-	}
+		 }
+	 }
     
   }
   
@@ -766,8 +775,10 @@ public class DFSInputStream extends FSInputStream {
 		  				G[j][i]  = (short)(g[j][i]);
 					}
 		  		}
-		  	 len = RSDecoder(G, decodebuf,dataLen,off,buf);
-		  	 pos += len;
+		  	 //len = RSDecoder(G, decodebuf,dataLen,off,buf);
+		  	 //len = XORDecoder(G, decodebuf,dataLen,off,buf);
+		  	len = matrix.decoder(G, decodebuf, dataLen, off, buf);
+		  	pos += len;
 		  	 BbyteLength += len;
 		  	 //DFSClient.LOG.info("xy..........len:"+len);
 		  	 return len;
@@ -807,6 +818,42 @@ public class DFSInputStream extends FSInputStream {
   /*
    * store decoded data into buf from offset 
    */
+//  /**
+//   * using Xor Decoder
+//   * revised by zdy @ 2013/10/28
+//   */
+// private int XORDecoder(short[][] g,byte[][] Buf,int[] buflen,int offset,byte[] buf) throws IOException{
+//    //g是编码矩阵，Buf是用于解码的数据，buflen对应Buf里数据的长度，解码得到的数据放到buf中从offset开始的位置
+//    //返回的是buf中写入的长度
+//    int len = 0;
+//    int off = offset;
+//    g = rsp.InitialInvertedCauchyMatrix(g);
+//
+//    for(int t = 0; t < k;t++){
+//      len = 0;
+//      for(int j = 0;j < k;j++){
+//        if(g[j][t] != 0){
+//          if(buflen[j] != -1 && len < buflen[j])
+//            len = buflen[j];
+//        }
+//      }
+//      short[] Output = new short[len];
+//      Arrays.fill(Output,(short)0);
+//      for(int i=0;i < k;i++){
+//        if(g[i][t] != 0){
+//          for(int j = 0;j < buflen[i];j++)
+//            Output[j] = (short) (Output[j] ^ Buf[i][j]);
+//        }
+//      }
+//
+//      for(int i = 0 ;i < Output.length;i++)
+//        buf[off++] = (byte)Output[i];
+//    }
+//
+//    return (off - offset);
+//  }
+
+  /*
   private  int RSDecoder(short[][] g,byte[][] Buf,int[] buflen,int offset,byte[] buf) throws IOException{	
 		int len = 0;
 		int off = offset;
@@ -874,7 +921,7 @@ public class DFSInputStream extends FSInputStream {
 	   return (off - offset);
 	 
   }
-  /*
+ 
   private void RSDecoder(short[][] g,byte[][] Buf,byte[] tempbuf){
 	RSCoderProtocol.setup_tables();
 	RSCoderProtocol.CalculateValue();	

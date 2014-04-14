@@ -1435,7 +1435,7 @@ public class DataNode extends Configured
 	  public CumulusRecovery(byte lostColumn, LocatedBlock[] locatedblks, CodingMatrix matrix){
 		  this.lostColumn = lostColumn;
 		  this.locatedBlks = locatedblks;
-		  this.matrix = new CodingMatrix(matrix);
+		  this.matrix = matrix;
 		  LOG.info("constructor..............");
 	  }
 
@@ -1443,16 +1443,25 @@ public class DataNode extends Configured
 	  public void run() {
 		// TODO Auto-generated method stub
 		  LOG.info(lostColumn+"  ");
+		  LOG.info("matrix size: " + matrix.getRow() + "  " + matrix.getColumn());
+		  LOG.info(matrix.toString());
+		  
 		  short[][] smatrix = new short[matrix.getRow()][matrix.getRow()];
 		  short[] vector = new short[matrix.getRow()];
 		  for (int i = 0; i < matrix.getRow(); i++) {
 			  	int jj = 0;
 				for (int j = 0; j < matrix.getColumn(); j++) {
 					if (j == lostColumn) {
-						vector[i] =  (short) (matrix.getElemAt(i, j)>=0 ? matrix.getElemAt(i, j) : (matrix.getElemAt(i, j)+256)); 
+						vector[i] =  (short) (matrix.getElemAt(i, j)>=0 ? 
+									matrix.getElemAt(i, j) 
+									:(matrix.getElemAt(i, j)+256)); 
 						continue;
 					}
-					smatrix[i][jj++] = (short) (matrix.getElemAt(i, j)>=0 ? matrix.getElemAt(i, j) : (matrix.getElemAt(i, j)+256)); 
+					if (jj < matrix.getRow()) {
+						smatrix[i][jj++] = (short) (matrix.getElemAt(i, j)>=0 
+											? matrix.getElemAt(i, j) 
+											: (matrix.getElemAt(i, j)+256)); 
+					}
 					
 				}
 		  }
