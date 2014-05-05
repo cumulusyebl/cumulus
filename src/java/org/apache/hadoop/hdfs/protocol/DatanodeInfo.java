@@ -37,6 +37,8 @@ import org.apache.hadoop.util.StringUtils;
 
 import org.apache.avro.reflect.Nullable;
 
+import org.apache.hadoop.hdfs.server.monitor.*;//add by xianyu
+
 /** 
  * DatanodeInfo represents the status of a DataNode.
  * This object is used for communication in the
@@ -48,9 +50,20 @@ public class DatanodeInfo extends DatanodeID implements Node {
   protected long capacity;
   protected long dfsUsed;
   protected long remaining;
+  
+  /************ add by xianyu ************/
+  protected ServernodeCPUStatus cpuStatus;
+  protected ServernodeMEMStatus memStatus;
+  protected ServernodeNETStatus[] netStatus;
+  protected ServernodeIOStatus[] ioStatus;
+  /***************************************/
+  
+  //removed by xianyu
+  /*
   protected long cpuUsed;  //ww add
   protected long memUsed;  //ww add  
   protected long ioUsed;   //ww add
+  */
   protected long lastUpdate;
   protected int xceiverCount;
   protected String location = NetworkTopology.DEFAULT_RACK;
@@ -77,9 +90,20 @@ public class DatanodeInfo extends DatanodeID implements Node {
     this.capacity = from.getCapacity();
     this.dfsUsed = from.getDfsUsed();
     this.remaining = from.getRemaining();
+    
+    /******** add by xianyu ********/
+    this.cpuStatus = from.cpuStatus;
+    this.memStatus = from.memStatus;
+    this.netStatus = from.netStatus;
+    this.ioStatus = from.ioStatus;
+    /*******************************/
+    
+    //removed by xianyu
+    /*
     this.cpuUsed=from.getCpuUsed();   //ww added
     this.memUsed=from.getMemUsed();   //ww added
     this.ioUsed=from.getIoUsed();     //ww added
+    */
     this.lastUpdate = from.getLastUpdate();
     this.xceiverCount = from.getXceiverCount();
     this.location = from.getNetworkLocation();
@@ -92,9 +116,20 @@ public class DatanodeInfo extends DatanodeID implements Node {
     this.capacity = 0L;
     this.dfsUsed = 0L;
     this.remaining = 0L;
+    
+    /******** add by xianyu ********/
+    this.cpuStatus = null;
+    this.memStatus = null;
+    this.netStatus = null;
+    this.ioStatus = null;
+    /*******************************/
+    
+    //removed by xianyu
+    /*
     this.cpuUsed = 0L;   //ww added;
     this.memUsed = 0L;   //ww added;
     this.ioUsed = 0L;    //ww added;
+    */
     this.lastUpdate = 0L;
     this.xceiverCount = 0;
     this.adminState = null;    
@@ -139,18 +174,40 @@ public class DatanodeInfo extends DatanodeID implements Node {
     return ((float)remaining * 100.0f)/(float)capacity; 
   }
 
-  /** The time when this information was accurate. */
-  /** The used cpu percentage by the data node. */
-  public long getCpuUsed() { return cpuUsed; }    // ww added
   
-     /** The used mem percentage by the data node. */
-  public long getMemUsed() { return memUsed; }    // ww added
-
-    /** The used io percentage by the data node. */
-  public long getIoUsed() { return ioUsed; }      // ww added
-
+  /************* add by xianyu *************/
+  /** get the cpu status of datanode */
+  public ServernodeCPUStatus getCPUStatus(){
+	  return cpuStatus;
+  }
+  /** get the mem status of datanode */
+  public ServernodeMEMStatus getMEMStatus(){
+	  return memStatus;
+  }
+  /** get the net status of datanode */
+  public ServernodeNETStatus[] getNETStatus(){
+	  return netStatus;
+  }
+  /** get the io status of datanode */
+  public ServernodeIOStatus[] getIOStatus(){
+	  return ioStatus;
+  }
+  /*****************************************/
+  
+  //removed by xianyu
+//  /** The used cpu percentage by the data node. */
+//  public long getCpuUsed() { return cpuUsed; }    // ww added
+//  
+//     /** The used mem percentage by the data node. */
+//  public long getMemUsed() { return memUsed; }    // ww added
+//
+//    /** The used io percentage by the data node. */
+//  public long getIoUsed() { return ioUsed; }      // ww added
+  
+  
+  /** The time when this information was accurate. */
   public long getLastUpdate() { return lastUpdate; }
-
+  
   /** number of active connections */
   public int getXceiverCount() { return xceiverCount; }
 
@@ -163,17 +220,39 @@ public class DatanodeInfo extends DatanodeID implements Node {
   public void setRemaining(long remaining) { 
     this.remaining = remaining; 
   }
-  public void setCpuUsed(long cpuUsed) {    //ww added
-	  this.cpuUsed = cpuUsed;
-    }
-     /** Sets mem used percentage. */
-  public void setMemUsed(long memUsed) {      //ww added
-	  this.memUsed = memUsed; 
-	  }
-    /** Sets io used percentage. */
-  public void setIoUsed(long ioUsed) {      //ww added
-	  this.ioUsed = ioUsed; 
-	  }
+  
+ 
+  /****************** add by xianyu *******************/
+  /** set the cpu status of datanode */
+  public void setCPUStatus(ServernodeCPUStatus status){
+	  this.cpuStatus = status;
+  }
+  /** set the mem status of datanode */
+  public void setMEMStatus(ServernodeMEMStatus status){
+	  this.memStatus = status;
+  }
+  /** set the net status of datanode */
+  public void setNETStatus(ServernodeNETStatus[] status){
+	  this.netStatus = status;
+  }
+  /** set the io status of datanode */
+  public void setIOStatus(ServernodeIOStatus[] status){
+	  this.ioStatus = status;
+  }
+  /****************************************************/
+  
+  //removed by xianyu
+//  public void setCpuUsed(long cpuUsed) {    //ww added
+//	  this.cpuUsed = cpuUsed;
+//    }
+//     /** Sets mem used percentage. */
+//  public void setMemUsed(long memUsed) {      //ww added
+//	  this.memUsed = memUsed; 
+//	  }
+//    /** Sets io used percentage. */
+//  public void setIoUsed(long ioUsed) {      //ww added
+//	  this.ioUsed = ioUsed; 
+//	  }
 
   /** Sets time when this information was accurate. */
   public void setLastUpdate(long lastUpdate) { 
@@ -236,6 +315,26 @@ public class DatanodeInfo extends DatanodeID implements Node {
     buffer.append("Non DFS Used: "+nonDFSUsed+" ("+StringUtils.byteDesc(nonDFSUsed)+")"+"\n");
     buffer.append("DFS Remaining: " +r+ " ("+StringUtils.byteDesc(r)+")"+"\n");
     buffer.append("DFS Used%: "+StringUtils.limitDecimalTo2(usedPercent)+"%\n");
+    
+    /************ add by xianyu ************/
+    ServernodeCPUStatus cs = getCPUStatus();
+    ServernodeMEMStatus ms = getMEMStatus();
+    ServernodeNETStatus ns[] = getNETStatus();
+    ServernodeIOStatus ios[] = getIOStatus();
+    if(cs != null)
+    	buffer.append(getCPUStatus().toString());
+    if(ms != null)
+    	buffer.append(getMEMStatus().toString());
+    if(ns != null && ns.length > 0){
+    	for(int i = 0; i < ns.length; i++)
+    		buffer.append(ns[i].toString());
+    }
+    if(ios != null && ios.length > 0){
+    	for(int j = 0; j < ios.length; j++)
+    		buffer.append(ios[j].toString());
+    }
+    /***************************************/
+    
     //buffer.append("Cpu Used: "+cpuUsed+" ("+StringUtils.byteDesc(cpuUsed)+")"+"\n"); // ww added
     //buffer.append("Mem Used: "+memUsed+" ("+StringUtils.byteDesc(memUsed)+")"+"\n"); // ww added
     //buffer.append("IO Used: "+ioUsed+" ("+StringUtils.byteDesc(ioUsed)+")"+"\n");    // ww added
@@ -266,6 +365,26 @@ public class DatanodeInfo extends DatanodeID implements Node {
     }
     buffer.append(" " + c + "(" + StringUtils.byteDesc(c)+")");
     buffer.append(" " + u + "(" + StringUtils.byteDesc(u)+")");
+    
+    /************ add by xianyu ************/
+    ServernodeCPUStatus cs = getCPUStatus();
+    ServernodeMEMStatus ms = getMEMStatus();
+    ServernodeNETStatus[] ns = getNETStatus();
+    ServernodeIOStatus[] ios = getIOStatus();
+    if(cs != null)
+    	buffer.append(" " + cs.toDump());
+    if(ms != null)
+    	buffer.append(" " + ms.toDump());
+    if(ns != null && ns.length > 0){
+    	for(int i = 0; i < ns.length; i++)
+    		buffer.append(" " + ns[i].toDump());
+    }
+    if(ios != null && ios.length > 0){
+    	for(int j = 0; j < ios.length; j++)
+    		buffer.append(" " + ios[j].toDump());
+    }
+    /***************************************/
+    
     //buffer.append(" "+cpuUsed+" ("+StringUtils.byteDesc(cpuUsed)+")"); // ww added
     //buffer.append(" "+memUsed+" ("+StringUtils.byteDesc(memUsed)+")"); // ww added
     //buffer.append(" "+ioUsed+" ("+StringUtils.byteDesc(ioUsed)+")");    // ww added
@@ -368,9 +487,43 @@ public class DatanodeInfo extends DatanodeID implements Node {
     out.writeLong(capacity);
     out.writeLong(dfsUsed);
     out.writeLong(remaining);
+    
+    /************ add by xianyu ************/
+    //write datanode status
+    if(cpuStatus == null)
+    	new ServernodeCPUStatus().write(out);
+    else
+    	cpuStatus.write(out);
+    if(memStatus == null)
+    	new ServernodeMEMStatus().write(out);
+    else
+    	memStatus.write(out);
+    if(netStatus == null){
+    	out.writeInt(1);
+    	new ServernodeNETStatus().write(out);
+    }
+    else{
+    	out.writeInt(netStatus.length);
+    	for(int i = 0; i < netStatus.length; i++)
+    		netStatus[i].write(out);
+    }
+    if(ioStatus == null){
+    	out.writeInt(1);
+    	new ServernodeIOStatus().write(out);
+    }
+    else{
+    	out.writeInt(ioStatus.length);
+    	for(int j = 0; j < ioStatus.length; j++)
+    		ioStatus[j].write(out);
+    }
+    /***************************************/
+    
+    //removed by xianyu
+    /*
     out.writeLong(cpuUsed);      //ww added
     out.writeLong(memUsed);      //ww added
     out.writeLong(ioUsed);       //ww added
+    */
     out.writeLong(lastUpdate);
     out.writeInt(xceiverCount);
     Text.writeString(out, location);
@@ -388,9 +541,29 @@ public class DatanodeInfo extends DatanodeID implements Node {
     this.capacity = in.readLong();
     this.dfsUsed = in.readLong();
     this.remaining = in.readLong();
+    
+    /*************** add by xianyu ***************/
+    //read datanode status
+    this.cpuStatus = ServernodeCPUStatus.read(in);
+    this.memStatus = ServernodeMEMStatus.read(in);
+    
+    int cnt = in.readInt();
+    this.netStatus = new ServernodeNETStatus[cnt];
+    for(int i = 0; i < cnt; i++)
+    	this.netStatus[i] = ServernodeNETStatus.read(in);
+    
+    cnt = in.readInt();
+    this.ioStatus = new ServernodeIOStatus[cnt];
+    for(int j = 0; j < cnt; j++)
+    	this.ioStatus[j] = ServernodeIOStatus.read(in);
+    /*******************************************/
+    
+    //removed by xianyu
+    /*
     this.cpuUsed = in.readLong();     //ww added
     this.memUsed = in.readLong();     //ww added 
-    this.ioUsed = in.readLong();      //ww added 
+    this.ioUsed = in.readLong();      //ww added
+    */ 
     this.lastUpdate = in.readLong();
     this.xceiverCount = in.readInt();
     this.location = Text.readString(in);

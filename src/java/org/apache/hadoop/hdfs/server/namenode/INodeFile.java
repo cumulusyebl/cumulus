@@ -431,6 +431,17 @@ class INodeFile extends INode {
     return returnBlock;
   }
 
+  /************* add by xianyu **************/
+  BlockInfo getBlockByBlockID(long blockID){
+	  for(int i = 0; i < numBlocks(); i++){
+		  if(blocks[i].getBlockId() == blockID)
+			  return blocks[i];
+	  }
+	  
+	  return null;
+  }
+  /******************************************/
+  
   int numBlocks() {
     return blocks == null ? 0 : blocks.length;
   }

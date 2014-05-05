@@ -108,16 +108,19 @@ public abstract class BlockPlacementPolicy {
    * @return array of DatanodeDescriptor instances chosen as target 
    * and sorted as a pipeline.
    */
-  /* ww added chooseN for load balancing
-   * 
-   */
- abstract public DatanodeDescriptor[] chooseN(String srcPath,
-          int numOfReplicas,
-          DatanodeDescriptor writer,
-          List<DatanodeDescriptor> chosenNodes,
-          HashMap<Node, Node> excludedNodes,
-          long blocksize,
-          List<DatanodeDescriptor> sortedDatanodes);
+  
+  /************************** removed by xianyu **************************/
+//  /* ww added chooseN for load balancing
+//   * 
+//   */
+// abstract public DatanodeDescriptor[] chooseN(String srcPath,
+//          int numOfReplicas,
+//          DatanodeDescriptor writer,
+//          List<DatanodeDescriptor> chosenNodes,
+//          HashMap<Node, Node> excludedNodes,
+//          long blocksize,
+//          List<DatanodeDescriptor> sortedDatanodes);
+  /***********************************************************************/
         
         
   abstract public DatanodeDescriptor[] chooseRandom(String srcPath,
@@ -221,17 +224,21 @@ public abstract class BlockPlacementPolicy {
                         new ArrayList<DatanodeDescriptor>(),
                         blocksize);
   }
-  /*ww added chooseN for load balancing
-   * 
-   */
-  DatanodeDescriptor[] chooseN(String srcPath,
-          int numOfReplicas,
-          DatanodeDescriptor writer,
-          long blocksize, List<DatanodeDescriptor> sortedDatanodes) {
-	  return chooseN(srcPath, numOfReplicas, writer,
-			  new ArrayList<DatanodeDescriptor>(),null,
-			  blocksize,sortedDatanodes);
-  }
+  
+  /************************** removed by xianyu **************************/
+//  /*ww added chooseN for load balancing
+//   * 
+//   */
+//  DatanodeDescriptor[] chooseN(String srcPath,
+//          int numOfReplicas,
+//          DatanodeDescriptor writer,
+//          long blocksize, List<DatanodeDescriptor> sortedDatanodes) {
+//	  return chooseN(srcPath, numOfReplicas, writer,
+//			  new ArrayList<DatanodeDescriptor>(),null,
+//			  blocksize,sortedDatanodes);
+//  }
+  /***********************************************************************/
+  
   DatanodeDescriptor[] chooseRandom(String srcPath,
           int numOfReplicas,
           DatanodeDescriptor writer,
@@ -240,19 +247,22 @@ public abstract class BlockPlacementPolicy {
 			  new ArrayList<DatanodeDescriptor>(),null,
 			  blocksize);
   }
-  /*ww added chooseN for load balancing
-   * 
-   */
-DatanodeDescriptor[] chooseN(String srcPath,
-          int numOfReplicas,
-          DatanodeDescriptor writer,
-          HashMap<Node, Node> excludedNodes,
-          long blocksize, List<DatanodeDescriptor> sortedDatanodes) {
-	  return chooseN(srcPath, numOfReplicas, writer,
-			  new ArrayList<DatanodeDescriptor>(),
-			  excludedNodes,
-			  blocksize, sortedDatanodes);
-  }
+  
+  /************************** removed by xianyu **************************/
+//  /*ww added chooseN for load balancing
+//   * 
+//   */
+//DatanodeDescriptor[] chooseN(String srcPath,
+//          int numOfReplicas,
+//          DatanodeDescriptor writer,
+//          HashMap<Node, Node> excludedNodes,
+//          long blocksize, List<DatanodeDescriptor> sortedDatanodes) {
+//	  return chooseN(srcPath, numOfReplicas, writer,
+//			  new ArrayList<DatanodeDescriptor>(),
+//			  excludedNodes,
+//			  blocksize, sortedDatanodes);
+//  }
+/***********************************************************************/
 
 
 DatanodeDescriptor[] chooseRandom(String srcPath,

@@ -42,6 +42,8 @@ public class DatanodeID implements WritableComparable<DatanodeID> {
   public String storageID; /// unique per cluster storageID
   protected int infoPort;     /// the port where the infoserver is running
   public int ipcPort;     /// the port where the ipc server is running
+  
+  public long registerTime; //add by xianyu
 
   /** Equivalent to DatanodeID(""). */
   public DatanodeID() {this("");}
@@ -74,6 +76,7 @@ public class DatanodeID implements WritableComparable<DatanodeID> {
     this.storageID = storageID;
     this.infoPort = infoPort;
     this.ipcPort = ipcPort;
+    this.registerTime = System.currentTimeMillis();//add by xianyu
   }
   
   /**
@@ -104,6 +107,15 @@ public class DatanodeID implements WritableComparable<DatanodeID> {
     return ipcPort;
   }
 
+  /************* add by xianyu *****************/
+  /**
+   * @return registerTime (the time that this datanode registered)
+   */
+  public long getRegisterTime() {
+    return registerTime;
+  }
+  /*********************************************/
+  
   /**
    * sets the data storage ID.
    */

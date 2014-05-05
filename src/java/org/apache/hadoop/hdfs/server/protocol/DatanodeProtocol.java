@@ -30,6 +30,8 @@ import org.apache.hadoop.security.KerberosInfo;
 
 import org.apache.avro.reflect.Nullable;
 
+import org.apache.hadoop.hdfs.server.monitor.*;//add by xianyu
+
 /**********************************************************************
  * Protocol that a DFS datanode uses to communicate with the NameNode.
  * It's used to upload current load information and block reports.
@@ -93,9 +95,20 @@ public interface DatanodeProtocol extends VersionedProtocol {
                                        long capacity,
                                        long dfsUsed, 
                                        long remaining,
+                                       
+                                       /******* add by xianyu *******/
+                                       ServernodeCPUStatus cpuStatus, 
+                                       ServernodeMEMStatus memStatus, 
+                                       ServernodeNETStatus[] netStatus, 
+                                       ServernodeIOStatus[] ioStatus, 
+                                       /*****************************/
+                                       
+                                       //removed by xianyu
+                                       /*
                                        long cpuUsed, //ww added
                                        long memUsed,
                                        long ioUsed,   //ww added
+                                       */
                                        int xmitsInProgress, int xceiverCount, 
                                        int failedVolumes) throws IOException;
 

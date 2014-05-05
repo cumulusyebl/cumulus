@@ -336,8 +336,10 @@
      webxml="${build.webapps}/secondary/WEB-INF/web.xml">
     </jsp-compile>
 
-    <!-- Compile Java files (excluding JSPs) checking warnings -->
+	<!-- Compile Java files (excluding JSPs) checking warnings -->
+	<!-- the attribute 'classpath' of task 'javac' is added. add by xianyu -->
     <javac 
+	 classpath="${lib.dir}/org-json.jar" 
      encoding="${build.encoding}" 
      srcdir="${java.src.dir};${build.src}" 
      includes="org/apache/hadoop/**/*.java"

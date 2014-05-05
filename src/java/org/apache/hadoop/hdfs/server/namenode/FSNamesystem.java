@@ -107,6 +107,8 @@ import javax.management.StandardMBean;
 import javax.management.MBeanServer;
 import org.apache.hadoop.hdfs.protocol.CodingMatrix;
 
+import org.apache.hadoop.hdfs.server.monitor.*;//add by xianyu
+
 /***************************************************
  * FSNamesystem does the actual bookkeeping work for the
  * DataNode.
@@ -280,89 +282,97 @@ public class FSNamesystem implements FSConstants, FSNamesystemMBean, FSClusterSt
 
   // lock to protect FSNamesystem.
   private ReentrantReadWriteLock fsLock;
-/*
-   * Tongxin ,the Inner Class herit Runnable interface 
-   */
-  public  class DatanodeDescriptorListSort implements Runnable 
-  {
-	    
-	   
-	   private long lastSortTime=0;
-	   private Configuration conf=null;
-	   public DatanodeDescriptorListSort()
-	   {
-		   
-	    }
-	    public DatanodeDescriptorListSort(Host2NodesMap host2NodesMap,Configuration tmp_conf)
-	    {
-	    	   this.conf=tmp_conf;
-            collectDatanodeDescriptor(host2NodesMap);
-	    }
-	    
-	   public void collectDatanodeDescriptor(Host2NodesMap host2NodesMap)
-	   {
-		      list.clear();
-    	      HashMap<String,DatanodeDescriptor[]> temp=host2NodesMap.getMap();
-	         Iterator<Entry<String,DatanodeDescriptor[]>> iter=temp.entrySet().iterator();
-	         while(iter.hasNext())
-	         {
-              Entry<String,DatanodeDescriptor[]> entry=iter.next();
-              DatanodeDescriptor[] value=entry.getValue();
-              for(int i=0;i<value.length;i++)
-                  { 
-              	 list.add(value[i]);
-                  }
-	         }  
-	   }
-	    
-	   class SortDataNode implements Comparator
-	   {
-		   public int compare(Object o1,Object o2)
-		   {
-			   DatanodeDescriptor s1=(DatanodeDescriptor)o1;
-			   DatanodeDescriptor s2=(DatanodeDescriptor)o2;
-			 double k1=s1.getMemUsed()*14+s1.getCpuUsed()*14+s1.getIoUsed()*76;
-			 double k2=s2.getMemUsed()*14+s2.getCpuUsed()*14+s2.getIoUsed()*76;
-			   
-			   if(k1>k2) return 1;
-			   else return 0;
-			   
-		   }
-	   }
-	  public void sortService(Configuration conf)
-	   {
-		   while(true)
-		   {
-				 long sortInterval=conf.getLong("dfs.heartbeat.interval", HEARTBEAT_INTERVAL) * 1000L;
-			    long startTime=now();
-			     if(startTime-lastSortTime>sortInterval)
-			     {
-			    	 lastSortTime=startTime;
-			    	 collectDatanodeDescriptor(host2DataNodeMap);
-			    	 Collections.sort(list, new SortDataNode());
-			     }
-			     try {
-					Thread.sleep(3000);
-				} catch (InterruptedException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-		   }
-	   }
-	   public void run()
-	   {
-		    sortService(this.conf);
-	   }
-  }
+  
+
+  /************************** removed by xianyu **************************/
+//  /*
+//   * Tongxin ,the Inner Class herit Runnable interface 
+//   */
+//  public  class DatanodeDescriptorListSort implements Runnable 
+//  {
+//	    
+//	   
+//	   private long lastSortTime=0;
+//	   private Configuration conf=null;
+//	   public DatanodeDescriptorListSort()
+//	   {
+//		   
+//	    }
+//	    public DatanodeDescriptorListSort(Host2NodesMap host2NodesMap,Configuration tmp_conf)
+//	    {
+//	    	   this.conf=tmp_conf;
+//            collectDatanodeDescriptor(host2NodesMap);
+//	    }
+//	    
+//	   public void collectDatanodeDescriptor(Host2NodesMap host2NodesMap)
+//	   {
+//		      list.clear();
+//    	      HashMap<String,DatanodeDescriptor[]> temp=host2NodesMap.getMap();
+//	         Iterator<Entry<String,DatanodeDescriptor[]>> iter=temp.entrySet().iterator();
+//	         while(iter.hasNext())
+//	         {
+//              Entry<String,DatanodeDescriptor[]> entry=iter.next();
+//              DatanodeDescriptor[] value=entry.getValue();
+//              for(int i=0;i<value.length;i++)
+//                  { 
+//              	 list.add(value[i]);
+//                  }
+//	         }  
+//	   }
+//	    
+//	   class SortDataNode implements Comparator
+//	   {
+//		   public int compare(Object o1,Object o2)
+//		   {
+//			   DatanodeDescriptor s1=(DatanodeDescriptor)o1;
+//			   DatanodeDescriptor s2=(DatanodeDescriptor)o2;
+//			 double k1=s1.getMemUsed()*14+s1.getCpuUsed()*14+s1.getIoUsed()*76;
+//			 double k2=s2.getMemUsed()*14+s2.getCpuUsed()*14+s2.getIoUsed()*76;
+//			   
+//			   if(k1>k2) return 1;
+//			   else return 0;
+//			   
+//		   }
+//	   }
+//	  public void sortService(Configuration conf)
+//	   {
+//		   while(true)
+//		   {
+//				 long sortInterval=conf.getLong("dfs.heartbeat.interval", HEARTBEAT_INTERVAL) * 1000L;
+//			    long startTime=now();
+//			     if(startTime-lastSortTime>sortInterval)
+//			     {
+//			    	 lastSortTime=startTime;
+//			    	 collectDatanodeDescriptor(host2DataNodeMap);
+//			    	 Collections.sort(list, new SortDataNode());
+//			     }
+//			     try {
+//					Thread.sleep(3000);
+//				} catch (InterruptedException e) {
+//					// TODO Auto-generated catch block
+//					e.printStackTrace();
+//				}
+//		   }
+//	   }
+//	   public void run()
+//	   {
+//		    sortService(this.conf);
+//	   }
+//  }
+  /***********************************************************************/
+  
   /**
    * FSNamesystem constructor.
    */
   FSNamesystem(Configuration conf) throws IOException {
     try {
+    //removed by xianyu
+    /*
 	Runnable r=new DatanodeDescriptorListSort(host2DataNodeMap,conf);   
 	//Tongxin,Start the thread
     	Thread t=new Thread(r);   //Tongxin
     	t.start();                //Tongxin
+    */
       initialize(conf, null);
     } catch(IOException e) {
       LOG.error(getClass().getSimpleName() + " initialization failed.", e);
@@ -507,10 +517,13 @@ public class FSNamesystem implements FSConstants, FSNamesystemMBean, FSClusterSt
    * is stored
    */
   FSNamesystem(FSImage fsImage, Configuration conf) throws IOException {
+	//removed by xianyu
+	/*
     Runnable r=new DatanodeDescriptorListSort(host2DataNodeMap,conf);  
 	//Tongxin,Start the thread
     Thread t=new Thread(r);   //Tongxin
     t.start();                //Tongxin
+    */
     this.fsLock = new ReentrantReadWriteLock(true);
     this.blockManager = new BlockManager(this, conf);
     setConfigurationParameters(conf);
@@ -529,11 +542,13 @@ public class FSNamesystem implements FSConstants, FSNamesystemMBean, FSClusterSt
    */
   FSNamesystem(Configuration conf, BackupStorage bnImage) throws IOException {
     try {
+    	//removed by xianyu
+    	/*
        Runnable r=new DatanodeDescriptorListSort(host2DataNodeMap,conf);   
       //Tongxin,Start the thread
     	Thread t=new Thread(r);   //Tongxin
     	t.start();                //Tongxin
-
+    	 */
       initialize(conf, bnImage);
     } catch(IOException e) {
       LOG.error(getClass().getSimpleName() + " initialization failed.", e);
@@ -1893,8 +1908,13 @@ public class FSNamesystem implements FSConstants, FSNamesystemMBean, FSClusterSt
     // choose targets for the new block to be allocated.
     // blocksize
     blockSize = fileLength/numOfBlk;
-    DatanodeDescriptor targets[] = blockManager.replicator.chooseN(
-        src, numOfBlk, clientNode, excludedNodes, blockSize,list );
+    
+    //modified by xianyu, because we have removed the 'chooseN' method.
+//    DatanodeDescriptor targets[] = blockManager.replicator.chooseN(
+//        src, numOfBlk, clientNode, excludedNodes, blockSize,list );//remove
+    DatanodeDescriptor targets[] = blockManager.replicator.chooseTarget(
+    		src, numOfBlk, clientNode, excludedNodes, blockSize);//add
+    
     if (targets.length < blockManager.minReplication) {
       throw new IOException("File " + src + " could only be replicated to " +
                             targets.length + " nodes, instead of " +
@@ -2916,7 +2936,15 @@ public class FSNamesystem implements FSConstants, FSNamesystemMBean, FSClusterSt
         if( !heartbeats.contains(nodeS)) {
           heartbeats.add(nodeS);
           //update its timestamp
-          nodeS.updateHeartbeat(0L, 0L, 0L, 0L, 0L, 0L, 0, 0); // ww modifie
+          nodeS.updateHeartbeat(0L, 0L, 0L, 
+        		  //add by xianyu
+        		  null, null, null, null, 
+        		  
+        		  //removed by xianyu
+        		  /*
+        		  0L, 0L, 0L, 
+        		  */
+        		  0, 0); // ww modifie
           nodeS.isAlive = true;
         }
       }
@@ -3036,7 +3064,14 @@ public class FSNamesystem implements FSConstants, FSNamesystemMBean, FSClusterSt
    */
   DatanodeCommand[] handleHeartbeat(DatanodeRegistration nodeReg,
       long capacity, long dfsUsed, long remaining,
+      //add by xianyu
+      ServernodeCPUStatus cpuStatus, ServernodeMEMStatus memStatus, 
+      ServernodeNETStatus[] netStatus, ServernodeIOStatus[] ioStatus, 
+      
+      //removed by xianyu
+      /*
       long cpuUsed, long memUsed, long ioUsed,             //ww added
+      */
       int xceiverCount, int xmitsInProgress, int failedVolumes) 
       throws IOException {
     DatanodeCommand cmd = null;
@@ -3061,7 +3096,14 @@ public class FSNamesystem implements FSConstants, FSNamesystemMBean, FSClusterSt
 
         updateStats(nodeinfo, false);
         nodeinfo.updateHeartbeat(capacity, dfsUsed, remaining, 
-	 cpuUsed, memUsed, ioUsed, xceiverCount, failedVolumes);// ww added
+        //add by xianyu
+        cpuStatus, memStatus, netStatus, ioStatus, 
+
+        //removed by xianyu
+        /*
+	 cpuUsed, memUsed, ioUsed, 
+         */
+        xceiverCount, failedVolumes);// ww added
         updateStats(nodeinfo, true);
         
         //check lease recovery
@@ -4884,6 +4926,57 @@ public class FSNamesystem implements FSConstants, FSNamesystemMBean, FSClusterSt
     }
     return numDead;
   }
+  
+  ///************************* add by xianyu **************************/
+  /**
+   * get the storageID of the datanodes who is/are live
+   */
+  public ArrayList<String> getLiveDataNodesStorageID(){
+	  ArrayList<String> liveNode = new ArrayList<String>();
+	  synchronized(datanodeMap){
+		  for(Iterator<DatanodeDescriptor> it = datanodeMap.values().iterator();
+				  it.hasNext();){
+			  DatanodeDescriptor dn = it.next();
+			  if(!isDatanodeDead(dn)){
+				  liveNode.add(dn.getStorageID());
+			  }
+		  }
+	  }
+	  
+	  return liveNode;
+  }
+  
+  /**
+   * get the storageID of the datanodes who is/are dead
+   */
+  public ArrayList<String> getDeadDataNodesStorageID(){
+	  ArrayList<String> deadNodes = new ArrayList<String>();
+	  synchronized(datanodeMap){
+		  for(Iterator<DatanodeDescriptor> it = datanodeMap.values().iterator();
+				  it.hasNext();){
+			  DatanodeDescriptor dn = it.next();
+			  if(isDatanodeDead(dn)){
+				  deadNodes.add(dn.getStorageID());
+			  }
+		  }
+	  }
+	  
+	  return deadNodes;
+  }
+  
+  /**
+   * get the storageID of the datanodes who is/are decommissioning
+   */
+  public ArrayList<String> getDecommissioningNodesStorageID(){
+	  ArrayList<String> decommissioningNodes = new ArrayList<String>();
+	  ArrayList<DatanodeDescriptor> dsps = getDecommissioningNodes();
+	  
+	  for(int i = 0; i < dsps.size(); i++)
+		  decommissioningNodes.add(dsps.get(i).getStorageID());
+	  return decommissioningNodes;
+  }
+  /********************************************************************/
+  
 
   /**
    * Sets the generation stamp for this filesystem

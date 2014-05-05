@@ -138,79 +138,81 @@ public class BlockPlacementPolicyDefault extends BlockPlacementPolicy {
                        results.toArray(new DatanodeDescriptor[results.size()]));
   }
   
-  /*ww added
-   * chooseN is for loadbalancing
-   * */
-  public DatanodeDescriptor[] chooseN(String srcPath, int numOfReplicas,
-	  		DatanodeDescriptor writer, List<DatanodeDescriptor> chosenNodes,
-	  		HashMap<Node, Node> excludedNodes, long blocksize,
-	  		List<DatanodeDescriptor> sortedDatanodes) {
-		    if (numOfReplicas == 0 || clusterMap.getNumOfLeaves()==0) {
-		        return new DatanodeDescriptor[0];
-		      }
-		        
-		      //if (excludedNodes == null) {
-		        //excludedNodes = new HashMap<Node, Node>();
-		      //}
-		       
-//		      int clusterSize = clusterMap.getNumOfLeaves();
-//		      int totalNumOfReplicas = chosenNodes.size()+numOfReplicas;
-//		      if (totalNumOfReplicas > clusterSize) {
-//		        numOfReplicas -= (totalNumOfReplicas-clusterSize);
-//		        totalNumOfReplicas = clusterSize;
+  /************************** removed by xianyu **************************/
+//  /*ww added
+//   * chooseN is for loadbalancing
+//   * */
+//  public DatanodeDescriptor[] chooseN(String srcPath, int numOfReplicas,
+//	  		DatanodeDescriptor writer, List<DatanodeDescriptor> chosenNodes,
+//	  		HashMap<Node, Node> excludedNodes, long blocksize,
+//	  		List<DatanodeDescriptor> sortedDatanodes) {
+//		    if (numOfReplicas == 0 || clusterMap.getNumOfLeaves()==0) {
+//		        return new DatanodeDescriptor[0];
 //		      }
-		        
-		      //int maxNodesPerRack = 
-		        //(numOfReplicas-1)/clusterMap.getNumOfRacks()+2;
-		        
-		      List<DatanodeDescriptor> results = 
-		    	  sortedDatanodes.subList(0, numOfReplicas);
-		 
-		      //for (Node node:chosenNodes) {
-		     //   excludedNodes.put(node, node);
-		      //}
-		        
-		      //if (!clusterMap.contains(writer)) {
-		     //   writer=null;
-		     // }
-		      //int numOfAvailableNodes=sortedDatanodes.size();
-		     // int i=0;
-		      /*try{
-		      while(numOfReplicas > 0 &&i<numOfAvailableNodes) {
-		          DatanodeDescriptor chosenNode = sortedDatanodes.get(i);
-		          i++;
-		          Node oldNode = excludedNodes.put(chosenNode, chosenNode);
-		          if (oldNode == null) { // choosendNode was not in the excluded list
-
-		            if (isGoodTarget(chosenNode, blocksize, maxNodesPerRack, results)) {
-		              numOfReplicas--;
-		              results.add(chosenNode);
-		           }
-		          }
-		        }
-		          
-		        if (numOfReplicas>0) {
-		          throw new NotEnoughReplicasException("Not able to place enough replicas");
-		        }
-  			}catch (NotEnoughReplicasException e) {
-		          FSNamesystem.LOG.warn("Not able to place enough replicas, still in need of "+ numOfReplicas);
-		        }*/
-		      
-		    for(int j=0;j<results.size();j++)
-		     {
-		    	FSNamesystem.LOG.info("LUYIWAN compare: "+j+" "+" " +
-		    	  		"cpu: "+results.get(j).getCpuUsed()+
-		    	  		"mem: "+results.get(j).getMemUsed()+
-		    	  		"io: "+results.get(j).getIoUsed());
-		    	  
-		      }
-		        return getPipeline(writer, results.toArray(new DatanodeDescriptor[results.size()]));
-  
-		      }
-
-//		      results.removeAll(chosenNodes);
-		        
-		      // sorting nodes to form a pipeline
+//		        
+//		      //if (excludedNodes == null) {
+//		        //excludedNodes = new HashMap<Node, Node>();
+//		      //}
+//		       
+////		      int clusterSize = clusterMap.getNumOfLeaves();
+////		      int totalNumOfReplicas = chosenNodes.size()+numOfReplicas;
+////		      if (totalNumOfReplicas > clusterSize) {
+////		        numOfReplicas -= (totalNumOfReplicas-clusterSize);
+////		        totalNumOfReplicas = clusterSize;
+////		      }
+//		        
+//		      //int maxNodesPerRack = 
+//		        //(numOfReplicas-1)/clusterMap.getNumOfRacks()+2;
+//		        
+//		      List<DatanodeDescriptor> results = 
+//		    	  sortedDatanodes.subList(0, numOfReplicas);
+//		 
+//		      //for (Node node:chosenNodes) {
+//		     //   excludedNodes.put(node, node);
+//		      //}
+//		        
+//		      //if (!clusterMap.contains(writer)) {
+//		     //   writer=null;
+//		     // }
+//		      //int numOfAvailableNodes=sortedDatanodes.size();
+//		     // int i=0;
+//		      /*try{
+//		      while(numOfReplicas > 0 &&i<numOfAvailableNodes) {
+//		          DatanodeDescriptor chosenNode = sortedDatanodes.get(i);
+//		          i++;
+//		          Node oldNode = excludedNodes.put(chosenNode, chosenNode);
+//		          if (oldNode == null) { // choosendNode was not in the excluded list
+//
+//		            if (isGoodTarget(chosenNode, blocksize, maxNodesPerRack, results)) {
+//		              numOfReplicas--;
+//		              results.add(chosenNode);
+//		           }
+//		          }
+//		        }
+//		          
+//		        if (numOfReplicas>0) {
+//		          throw new NotEnoughReplicasException("Not able to place enough replicas");
+//		        }
+//  			}catch (NotEnoughReplicasException e) {
+//		          FSNamesystem.LOG.warn("Not able to place enough replicas, still in need of "+ numOfReplicas);
+//		        }*/
+//		      
+//		    for(int j=0;j<results.size();j++)
+//		     {
+//		    	FSNamesystem.LOG.info("LUYIWAN compare: "+j+" "+" " +
+//		    	  		"cpu: "+results.get(j).getCpuUsed()+
+//		    	  		"mem: "+results.get(j).getMemUsed()+
+//		    	  		"io: "+results.get(j).getIoUsed());
+//		    	  
+//		      }
+//		        return getPipeline(writer, results.toArray(new DatanodeDescriptor[results.size()]));
+//  
+//		      }
+//
+////		      results.removeAll(chosenNodes);
+//		        
+//		      // sorting nodes to form a pipeline
+  /***********************************************************************/
 		      
  
   public DatanodeDescriptor[] chooseRandom(String srcPath, int numOfReplicas,

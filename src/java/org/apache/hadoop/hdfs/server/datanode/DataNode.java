@@ -135,6 +135,8 @@ import java.lang.management.ManagementFactory;
 import javax.management.MBeanServer; 
 import javax.management.ObjectName;
 
+import org.apache.hadoop.hdfs.server.monitor.*;//add by xianyu
+
 /**********************************************************
  * DataNode is a class (and program) that stores a set of
  * blocks for a DFS deployment.  A single deployment can
@@ -247,7 +249,12 @@ public class DataNode extends Configured
   public Server ipcServer;
 
   private SecureResources secureResources = null;  
-  public DatanodeStat dnStat=new DatanodeStat();    //Tongxin,collect the stat of datanode
+  
+  //removed by xianyu
+//  public DatanodeStat dnStat=new DatanodeStat();    //Tongxin,collect the stat of datanode
+
+  //add by xianyu
+  public ServernodeStator dnStator = new ServernodeStator(ServernodeRole.DATANODE);
   
   /**
    * Create the DataNode given a configuration and an array of dataDirs.
@@ -360,6 +367,12 @@ public class DataNode extends Configured
     this.infoServer.setAttribute(JspHelper.CURRENT_CONF, conf);
     this.infoServer.addServlet(null, "/blockScannerReport", 
                                DataBlockScanner.Servlet.class);
+    
+    //add by xianyu
+    this.infoServer.addInternalServlet("monitor", "/monitor", 
+    //		MonitorServlet.GetDatanodeLogServlet.class, false);
+    		DatanodeMonitorServlet.class, false);
+    
     this.infoServer.start();
     // adjust info port
     this.dnRegistration.setInfoPort(this.infoServer.getPort());
@@ -914,17 +927,35 @@ public class DataNode extends Configured
           // -- Total capacity
           // -- Bytes remaining
           //
+          ////******************* add by xianyu *************************/
+          // -- cpu status: cur-rate, avg-rate, max-rate, min-rate.
+          // -- mem status: cur-rate, avg-rate, max-rate, min-rate.
+          // -- net status: []{name, bandwidth, duplex, cur-rate, avg-rate, max-rate, min-rate}
+          // -- io status: []{cur-rate, avg-rate, max-rate, min-rate}
+          ////***********************************************************/
+          //
           lastHeartbeat = startTime;
-	   collectDatanodeStat();                 //tongxin added
+
+       //removed by xianyu
+//	   collectDatanodeStat();                 //tongxin added
 //	    LOG.info("\r\n heartbeat :" +"\r\n  cpu: "+dnStat.getCpuUsed() +"\r\n  memory: "+dnStat.getMemUsed() 
 //		+"\r\n  io: "+dnStat.getIoUsed());	
           DatanodeCommand[] cmds = namenode.sendHeartbeat(dnRegistration,
                                                        data.getCapacity(),
                                                        data.getDfsUsed(),
                                                        data.getRemaining(),
- 								(long)(dnStat.getCpuUsed()*100),
+                                       /**** add by xianyu ****/
+                                       dnStator.getCPUStatus(), 
+                                       dnStator.getMEMStatus(), 
+                                       dnStator.getNETStatus(), 
+                                       dnStator.getIOStatus(), 
+                                       /***********************/
+                                                       //removed by xianyu
+                                                       /*
+ 													   (long)(dnStat.getCpuUsed()*100),
                                                        (long)(dnStat.getMemUsed()*100),   // ww added
                                                        (long)(dnStat.getIoUsed()*100),
+                                                       */
                                                        xmitsInProgress.get(),
                                                        getXceiverCount(),
                                                        data.getNumFailedVolumes());
@@ -1670,24 +1701,26 @@ public class DataNode extends Configured
       blockScanner.addBlock(block);
     }
   }
-/**
-   * Tongxin 
-   * this function is used to collect the status of the datanode,and store them into
-   * dnStat.   
-   */
-   public void collectDatanodeStat() 
-   {
-	   try{
-	    dnStat.calCpuUsed();
-	    dnStat.calMemUsed();
-	    dnStat.calIoUsed();
-	    
-	     }
-	   catch(Exception e)
-	      {
-	    	  e.printStackTrace();
-	      }
-   }
+
+  //removed by xianyu
+//  /**
+//   * Tongxin 
+//   * this function is used to collect the status of the datanode,and store them into
+//   * dnStat.   
+//   */
+//   public void collectDatanodeStat() 
+//   {
+//	   try{
+//	    dnStat.calCpuUsed();
+//	    dnStat.calMemUsed();
+//	    dnStat.calIoUsed();
+//	    
+//	     }
+//	   catch(Exception e)
+//	      {
+//	    	  e.printStackTrace();
+//	      }
+//   }
 
   /**
    * No matter what kind of exception we get, keep retrying to offerService().
@@ -1702,7 +1735,8 @@ public class DataNode extends Configured
     // start dataXceiveServer
     dataXceiverServer.start();
     ipcServer.start();
-        
+    dnStator.activate();//add by xianyu. to activate the Datanode Stator.
+
     while (shouldRun) {
       try {
         startDistributedUpgradeIfNeeded();

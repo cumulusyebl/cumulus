@@ -40,7 +40,7 @@ import org.apache.hadoop.io.Text;
 import org.apache.hadoop.hdfs.DeprecatedUTF8;
 import org.apache.hadoop.io.WritableUtils;
 
-
+import org.apache.hadoop.hdfs.server.monitor.*;//add by xianyu
 
 
 /**************************************************
@@ -140,7 +140,28 @@ public class DatanodeDescriptor extends DatanodeInfo {
    * @param nodeID id of the data node
    */
   public DatanodeDescriptor(DatanodeID nodeID) {
-	  this(nodeID, 0L, 0L, 0L, 0L, 0L, 0L, 0, 0);  //ww modified 
+	  /* add by xianyu
+	  call: 
+	    public DatanodeDescriptor(DatanodeID nodeID, 
+                            long capacity,
+                            long dfsUsed,
+                            long remaining,
+                            ServernodeCPUStatus cpuStatus, 
+                            ServernodeMEMStatus memStatus, 
+                            ServernodeNETStatus[] netStatus, 
+                            ServernodeIOStatus[] ioStatus, 
+                            int xceiverCount,
+                            int failedVolumes)
+	  */
+	  this(nodeID, 0L, 0L, 0L, 
+			  //add by xianyu
+			  null, null, null, null, 
+			  
+			  //removed by xianyu
+			  /*
+			  0L, 0L, 0L, 
+			  */
+			  0, 0);  ////ww modified 
   }
 
   /** DatanodeDescriptor constructor
@@ -162,7 +183,30 @@ public class DatanodeDescriptor extends DatanodeInfo {
   public DatanodeDescriptor(DatanodeID nodeID, 
                             String networkLocation,
                             String hostName) {
-	  this(nodeID, networkLocation, hostName, 0L, 0L, 0L, 0L, 0L, 0L, 0, 0); //ww modified
+	  /* add by xianyu
+	  call: 
+	    public DatanodeDescriptor(DatanodeID nodeID,
+                            String networkLocation,
+                            String hostName,
+                            long capacity,
+                            long dfsUsed,
+                            long remaining,
+                            ServernodeCPUStatus cpuStatus, 
+                            ServernodeMEMStatus memStatus, 
+                            ServernodeNETStatus[] netStatus, 
+                            ServernodeIOStatus[] ioStatus,
+                            int xceiverCount,
+                            int failedVolumes)
+	  */
+	  this(nodeID, networkLocation, hostName, 0L, 0L, 0L, 
+			  //add by xianyu
+			  null, null, null, null, 
+			  
+			  //removed by xianyu
+			  /*
+			  0L, 0L, 0L, 
+			  */
+			  0, 0); ////ww modified
   }
   
   /** DatanodeDescriptor constructor
@@ -177,13 +221,30 @@ public class DatanodeDescriptor extends DatanodeInfo {
                             long capacity,
                             long dfsUsed,
                             long remaining,
+                            //add by xianyu
+                            ServernodeCPUStatus cpuStatus, 
+                            ServernodeMEMStatus memStatus, 
+                            ServernodeNETStatus[] netStatus, 
+                            ServernodeIOStatus[] ioStatus, 
+                            
+                            //removed by xianyu
+                            /*
                             long cpuUsed,         //ww added
                             long memUsed,         //ww added
                             long ioUsed,          //ww added
+                            */
                             int xceiverCount,
                             int failedVolumes) {
     super(nodeID);
-    updateHeartbeat(capacity, dfsUsed, remaining, cpuUsed, memUsed, ioUsed, xceiverCount, failedVolumes);
+    updateHeartbeat(capacity, dfsUsed, remaining, 
+    		//add by xianyu
+    		cpuStatus, memStatus, netStatus, ioStatus, 
+    		
+    		//removed by xianyu
+    		/*
+    		cpuUsed, memUsed, ioUsed, 
+    		*/
+    		xceiverCount, failedVolumes);
   }
 
   /** DatanodeDescriptor constructor
@@ -201,13 +262,31 @@ public class DatanodeDescriptor extends DatanodeInfo {
                             long capacity,
                             long dfsUsed,
                             long remaining,
+                            /******* add by xianyu *******/
+                            ServernodeCPUStatus cpuStatus, 
+                            ServernodeMEMStatus memStatus, 
+                            ServernodeNETStatus[] netStatus, 
+                            ServernodeIOStatus[] ioStatus,
+                            /*****************************/
+                            
+                            //removed by xianyu
+                            /*
                             long cpuUsed,    //ww added
                             long memUsed,
                             long ioUsed,
+                            */
                             int xceiverCount,
                             int failedVolumes) {
     super(nodeID, networkLocation, hostName);
-    updateHeartbeat(capacity, dfsUsed, remaining, cpuUsed, memUsed, ioUsed, xceiverCount, failedVolumes);
+    updateHeartbeat(capacity, dfsUsed, remaining, 
+    		//add by xianyu
+    		cpuStatus, memStatus, netStatus, ioStatus, 
+    		
+    		//removed by xianyu
+    		/*
+    		cpuUsed, memUsed, ioUsed, 
+    		*/
+    		xceiverCount, failedVolumes);
   }
 
   /**
@@ -264,9 +343,20 @@ public class DatanodeDescriptor extends DatanodeInfo {
     this.capacity = 0;
     this.remaining = 0;
     this.dfsUsed = 0;
+    
+    /*** add by xianyu ***/
+    this.cpuStatus = null;
+    this.memStatus = null;
+    this.netStatus = null;
+    this.ioStatus = null;
+    /********************/
+    
+    //removed by xianyu
+    /*
     this.cpuUsed = 0;              //ww added
     this.memUsed = 0;              //ww added
     this.ioUsed = 0;               //ww added
+    */
     this.xceiverCount = 0;
     this.blockList = null;
     this.invalidateBlocks.clear();
@@ -281,13 +371,35 @@ public class DatanodeDescriptor extends DatanodeInfo {
    * Updates stats from datanode heartbeat.
    */
   void updateHeartbeat(long capacity, long dfsUsed, long remaining,
-		  long cpuUsed, long memUsed, long ioUsed, int xceiverCount, int volFailures) {
+		  
+		  /******* add by xianyu *******/
+		  ServernodeCPUStatus cpuStatus, 
+		  ServernodeMEMStatus memStatus, 
+		  ServernodeNETStatus[] netStatus, 
+		  ServernodeIOStatus[] ioStatus,
+		  /*****************************/
+		  
+		  //removed by xianyu
+		  /*
+		  long cpuUsed, long memUsed, long ioUsed, 
+		  */
+		  int xceiverCount, int volFailures) {
     this.capacity = capacity;
     this.dfsUsed = dfsUsed;
     this.remaining = remaining;
+    /****** add by xianyu ******/
+    this.cpuStatus = cpuStatus;
+    this.memStatus = memStatus;
+    this.netStatus = netStatus;
+    this.ioStatus = ioStatus;
+    /***************************/
+    
+    //removed by xianyu
+    /*
     this.cpuUsed = cpuUsed;                    //ww added
     this.memUsed = memUsed;                    //ww added
     this.ioUsed = ioUsed;                      //ww adde
+    */
     this.lastUpdate = System.currentTimeMillis();
     this.xceiverCount = xceiverCount;
     this.volumeFailures = volFailures;
@@ -384,6 +496,24 @@ public class DatanodeDescriptor extends DatanodeInfo {
       return invalidateBlocks.size();
     }
   }
+  
+  
+  /************** add by xianyu ****************
+  /**
+   * The number of work items that are pending to be recovered
+   */
+  int getNumberOfBlocksToBeRecoved(){
+	  return recoverBlocks.size();
+  }
+  
+  /**
+   * live or dead
+   */
+  boolean isAlive(){
+	  return isAlive;
+  }
+  /***********************************************/
+  
   
   /**
    * added by czl
@@ -623,9 +753,28 @@ public class DatanodeDescriptor extends DatanodeInfo {
     this.capacity = in.readLong();
     this.dfsUsed = in.readLong();
     this.remaining = in.readLong();
+    
+    /************** add by xianyu *********************/
+    this.cpuStatus = ServernodeCPUStatus.read(in);
+    this.memStatus = ServernodeMEMStatus.read(in);
+    
+    int cnt = in.readInt();
+    this.netStatus = new ServernodeNETStatus[cnt];
+    for(int i = 0; i < cnt; i++)
+    	this.netStatus[i] = ServernodeNETStatus.read(in);
+    
+    cnt = in.readInt();
+    this.ioStatus = new ServernodeIOStatus[cnt];
+    for(int j = 0; j < cnt; j++)
+    	this.ioStatus[j] = ServernodeIOStatus.read(in);
+    /**************************************************/
+    
+    //removed by xianyu
+    /*
     this.cpuUsed = in.readLong();                 //ww added
     this.memUsed = in.readLong();                 //ww added
     this.ioUsed = in.readLong();                  //ww added
+    */
     this.lastUpdate = in.readLong();
     this.xceiverCount = in.readInt();
     this.location = Text.readString(in);

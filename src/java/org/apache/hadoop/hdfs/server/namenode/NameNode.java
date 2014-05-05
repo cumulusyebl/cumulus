@@ -106,6 +106,8 @@ import org.apache.hadoop.util.ServicePlugin;
 import org.apache.hadoop.util.StringUtils;
 import org.apache.hadoop.hdfs.protocol.CodingMatrix;
 
+import org.apache.hadoop.hdfs.server.monitor.*;//add by xianyu
+
 /**********************************************************
  * NameNode serves as both directory namespace manager and
  * "inode table" for the Hadoop DFS.  There is a single NameNode
@@ -195,6 +197,9 @@ public class NameNode implements NamenodeProtocols, FSConstants {
   private boolean serviceAuthEnabled = false;
   /** Activated plug-ins. */
   private List<ServicePlugin> plugins;
+  
+  //add by xianyu
+  private ServernodeStator nnStator = new ServernodeStator(ServernodeRole.NAMENODE);
   
   /** Format a new filesystem.  Destroys any filesystem that may already
    * exist at this location.  **/
@@ -422,6 +427,8 @@ public class NameNode implements NamenodeProtocols, FSConstants {
         LOG.warn("ServicePlugin " + p + " could not be started", t);
       }
     }
+    
+    nnStator.activate();//add by xianyu
   }
 
   private void startTrashEmptier(Configuration conf) throws IOException {
@@ -518,6 +525,11 @@ public class NameNode implements NamenodeProtocols, FSConstants {
               FileChecksumServlets.RedirectServlet.class, false);
           httpServer.addInternalServlet("contentSummary", "/contentSummary/*",
               ContentSummaryServlet.class, false);
+          
+          //add by xianyu
+          httpServer.addInternalServlet("monitor", "/monitor", 
+        		  MonitorServlet.class, false);
+          
           httpServer.start();
 
           // The web-server port can be ephemeral... ensure we have the correct
@@ -1262,14 +1274,31 @@ public class NameNode implements NamenodeProtocols, FSConstants {
                                        long capacity,
                                        long dfsUsed,
                                        long remaining,
+                               /******* add by xianyu *******/
+                               ServernodeCPUStatus cpuStatus, 
+                               ServernodeMEMStatus memStatus, 
+                               ServernodeNETStatus[] netStatus, 
+                               ServernodeIOStatus[] ioStatus, 
+                               /*****************************/
+                                       
+                                       //removed by xianyu
+                                       /*
                                        long cpuUsed,                   //ww added
                                        long memUsed,long ioUsed,      //ww added
+                                       */
                                        int xmitsInProgress,
                                        int xceiverCount,
                                        int failedVolumes) throws IOException {
     verifyRequest(nodeReg);
     return namesystem.handleHeartbeat(nodeReg, capacity, dfsUsed, remaining,
-        cpuUsed, memUsed, ioUsed,xceiverCount, xmitsInProgress, failedVolumes);
+    	//add by xianyu
+    	cpuStatus, memStatus, netStatus, ioStatus, 
+    		
+    	//removed by xianyu
+    	/*
+        cpuUsed, memUsed, ioUsed,
+        */
+        xceiverCount, xmitsInProgress, failedVolumes);
   }
 
   public DatanodeCommand blockReport(DatanodeRegistration nodeReg,
@@ -1612,5 +1641,10 @@ public class NameNode implements NamenodeProtocols, FSConstants {
 		RSCoderProtocol.getRSP();
 		NameNode.LOG.info("fill RS table");
 	}
+  }
+  
+  //add by xianyu
+  public ServernodeStator getServernodeStator(){
+	  return nnStator;
   }
 }
