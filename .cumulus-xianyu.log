@@ -1,0 +1,114 @@
+
+====================
++ part 1: 准备工作 +
+====================
+下载cumulus >
+	git clone https://github.com/cumulusyebl/cumulus
+进入cumulus目录 >
+	cd $CUMULUS_HOME
+编译 >
+	ant
+		编译fail，提示缺少src/test/aop/build/aop.xml
+		添加src/test/aop/build，该目录下有aop.xml文件，编译时需要
+编译 >
+	ant
+配置 >
+	添加以下文件：
+		bin/hadoop-config.sh
+		bin/hadoop-daemon.sh
+		bin/hadoop-daemons.sh
+		bin/slaves.sh
+		bin/jsvc
+		conf/hadoop-env.sh
+		conf/core-site.xml (注：从这行开始的4个文件的内容，之前已设置)
+		conf/hdfs-site.xml
+		conf/masters
+		conf/slaves
+	删除以下文件：
+		conf/hdfs-site.xml.template
+			因为在编译的时候，根据build.xml的294-297，conf目录下的 * 会被 *.template 覆盖
+打包发布 >
+	ant tar -Dforrest.home=$FORREST_HOME
+测试 >
+	scp build/hadoop-hdfs-0.22.1-SNAPSHOT.tar.gz hadoop@cumulus:/home/hadoop/myhadoop
+	ssh到集群，运行，测试
+//测试通过，准备工作完成
+记录 >
+	git add .
+	git commit
+
+====================
++ part 2: 添加代码 +
+====================
+导入到eclipse >
+	ant eclipse
+	在eclipse中import
+
+//资源信息获取模块的代码
+删除tony的代码，这部分代码跟他的本科毕设有关，主要是资源监控和负载均衡，详见他的论文和git日志.
+添加我的代码，详见git日志.
+这里大致说明一下：
+	删除的文件：
+		org/apache/hadoop/hdfs/server/datanode/DatanodeStat.java
+	增加的文件：
+		org/apache/hadoop/hdfs/server/monitor/*
+						ServernodeStator.java
+						ServernodeRole.java
+						ServernodeCPUStator.java	ServernodeCPUStatus.java
+						ServernodeMEMStator.java	ServernodeMEMStatus.java
+						ServernodeNETStator.java	ServernodeNETStatus.java
+						ServernodeIOStator.java		ServernodeIOStatus.java
+	修改的文件：
+		org/apache/hadoop/hdfs/server/datanode/DataNode.java
+		org/apache/hadoop/hdfs/server/protocol/DatanodeProtocol.java
+		org/apache/hadoop/hdfs/server/namenode/NameNode.java
+		org/apache/hadoop/hdfs/server/namenode/FSNamesystem.java
+		org/apache/hadoop/hdfs/server/namenode/DatanodeDescriptor.java
+		org/apache/hadoop/hdfs/protocol/DatanodeInfo.java
+		org/apache/hadoop/hdfs/server/namenode/BlockPlacementPolicyDefault.java
+		org/apache/hadoop/hdfs/server/namenode/BlockPlacementPolicy.java
+编译 >
+	ant
+		/* NOTE */
+		出现Failed to generate parameter names错误，这是由build.xml中362－364行引起的，
+		我删除了这个task，之后编译通过，也可以在集群中运行，没有出现问题。
+		目前build.xml中注释了这个task，详见build.xml(搜xianyu).
+
+//接口部分的代码
+	增加的文件：
+		org/apache/hadoop/hdfs/server/namenode/MonitorServlet.java
+		org/apache/hadoop/hdfs/server/datanode/DatanodeMonitorServlet.java
+		lib/org-json.jar
+	修改的文件：
+		org/apache/hadoop/hdfs/server/namenode/FSNamesystem.java
+		org/apache/hadoop/hdfs/server/namenode/INodeFile.java
+		org/apache/hadoop/hdfs/protocol/DatanodeID.java
+修改build.xml >
+	//由于我们增加了org-json.jar
+	在build.xml的javac task中增加一个classpath属性，具体如下：
+		build.xml的341－353行是javac task, 修改之前：
+			<javac 
+			 encoding=....
+		修改之后：
+			<javac 
+			 classpath="{$lib.dir}/org-json.jar" 
+			 encoding=...
+编译 >
+	ant
+打包发布 >
+	ant tar -Dforrest.home=$FORREST_HOME
+测试 >
+	scp build/hadoop-hdfs-0.22.1-SNAPSHOT.tar.gz hadoop@cumulus:/home/hadoop/myhadoop
+	ssh到集群，运行，测试
+//测试通过
+记录 >
+	git add .
+	git commit
+
+
+====================
++ part 3: 注意事项 +
+====================
+1. build.xml 中修改了两处，搜索xianyu，可找到修改的位置。
+2. lib目录下增加了一个包：org-json.jar，bin和conf下都增加了一些文件。
+3. src目录下，所有我修改/删除/添加了代码的位置，我都做了注释，标记是xianyu。

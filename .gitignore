@@ -22,9 +22,9 @@
 build/
 build-fi/
 build.properties
-conf/masters
-conf/slaves
-conf/hadoop-env.sh
+#conf/masters
+#conf/slaves
+#conf/hadoop-env.sh
 conf/hadoop-site.xml
 conf/hdfs-site.xml
 conf/hadoop-policy.xml

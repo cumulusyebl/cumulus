@@ -357,13 +357,21 @@
        name="paranamer" 
        classname="com.thoughtworks.paranamer.ant.ParanamerGeneratorTask">
       <classpath refid="classpath" />
-    </taskdef>
+	</taskdef>
+
+	<!-- removed by xianyu -->
+	<!-- the below second task will cause 'Failed to generate parameter names'
+		 error, which leads to build failed. 
+		 without these two tasks, we can build successfully, and the cumulus run well. 
+		 No bug has found so far. -->
+	<!--
     <paranamer
        sourceDirectory="${java.src.dir}/org/apache/hadoop/hdfs/protocol"
        outputDirectory="${build.classes}"/>
     <paranamer
        sourceDirectory="${java.src.dir}/org/apache/hadoop/hdfs/server/protocol"
        outputDirectory="${build.classes}"/>
+	-->
 
     <copy todir="${build.classes}">
      <fileset dir="${java.src.dir}" includes="**/*.properties"/>
