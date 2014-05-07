@@ -143,7 +143,7 @@ public class FSImageSerialization {
     out.writeInt(0); //  do not store locations of last block
   }
 
-  /*
+  /* modified by tony 2014/3/29
    * Save one inode's attributes to the image.
    */
   static void saveINode2Image(ByteBuffer name,
@@ -195,6 +195,8 @@ public class FSImageSerialization {
       out.write(fileINode.getType());
       fileINode.getMatrix().write(out);
       
+      /**write out the headerIndex**/
+      out.writeLong(fileINode.header_offset);
     }
   }
 

@@ -49,7 +49,9 @@ import org.apache.hadoop.hdfs.protocol.QuotaExceededException;
 import org.apache.hadoop.hdfs.server.common.HdfsConstants.BlockUCState;
 import org.apache.hadoop.hdfs.server.common.HdfsConstants.StartupOption;
 import org.apache.hadoop.hdfs.util.ByteArray;
+
 import static org.apache.hadoop.hdfs.server.common.Util.now;
+
 import org.apache.hadoop.hdfs.DFSConfigKeys;
 import org.apache.hadoop.hdfs.protocol.CodingMatrix;
 
@@ -161,14 +163,16 @@ class FSDirectory implements Closeable {
         fsImage.saveNamespace(true);
       }
 
-	 /**
+      /**
        * add by tony
        * the singleton headerBufferInstance,the buffer size is 100 by default
        */
-
-      this.headerBuffer=HeaderBuffer.Instance(100,fsImage.getBufferStorage());
-       NameNode.LOG.info("headerBuffer instance in FSDirectory"+"---------------TONY");
-	 NameNode.LOG.info("headerBuffer instance: "+this.headerBuffer+"------------TONY");
+      	long max_offset = fsImage.getMaxOffset();
+      	NameNode.LOG.info("headerBuffer instance in FSDirectory, max_offset: "+max_offset+"-----------TONY");
+       	this.headerBuffer= fsImage.getHeaderBuffer();
+       	NameNode.LOG.info("headerBuffer instance in FSDirectory.loadFsImage: "+this.headerBuffer+" "
+       					  +this.headerBuffer.bufferposition+"------------TONY");
+       	
       FSEditLog editLog = fsImage.getEditLog();
       assert editLog != null : "editLog must be initialized";
       fsImage.setCheckpointDirectories(null, null);
@@ -308,7 +312,6 @@ class FSDirectory implements Closeable {
 	    try {
 	      newNode = addNode(path, newNode, UNKNOWN_DISK_SPACE, false);
 	      NameNode.LOG.info("FSDirectory addFile newNode path: "+newNode.getFullPathName()+"-----------TONY");
-	      newNode.serializeHeader();
 	    } finally {
 	      writeUnlock();
 	    }
@@ -335,6 +338,7 @@ class FSDirectory implements Closeable {
   INode unprotectedAddFile( String path, 
                             PermissionStatus permissions,
                             CodingMatrix codingMatrix,
+                            long headeroffset,
                             long fileSize,
                             BlockInfo[] blocks, 
                             short replication,
@@ -348,7 +352,7 @@ class FSDirectory implements Closeable {
       newNode = new INodeDirectory(permissions, modificationTime);
     else {
 		//modified by tony
-      newNode = new INodeFile(permissions, codingMatrix, blocks,
+      newNode = new INodeFile(permissions, codingMatrix,headeroffset,blocks,
                               modificationTime, atime, fileSize, 65536,this.headerBuffer);
       diskspace = ((INodeFile)newNode).diskspaceConsumed(blocks);
     }
@@ -357,7 +361,7 @@ class FSDirectory implements Closeable {
       try {
         newNode = addNode(path, newNode, diskspace, false);
         NameNode.LOG.info("FSDirectory uprotectedAddFile newNode path"+newNode.getFullPathName()+"-----------TONY");
-	    ((INodeFile)newNode).serializeHeader();
+        
 	if(newNode != null && blocks != null) {
           int nrBlocks = blocks.length;
           // Add file->block mapping
@@ -452,6 +456,7 @@ class FSDirectory implements Closeable {
 						          long nsQuota,
 						          long dsQuota,
 						          CodingMatrix codingMatrix,
+						          long headeroffset,
 						          long fileSize,
 						          byte type,
 						          long preferredBlockSize,
@@ -470,7 +475,7 @@ class FSDirectory implements Closeable {
 	      }
 	    } else {
 			//modified by tony
-	      newNode = new INodeFile(permissions, codingMatrix,blocks,
+	      newNode = new INodeFile(permissions, codingMatrix,headeroffset,blocks,
 	                              modificationTime, atime, fileSize, 65536,this.headerBuffer);
 	      ((INodeFile)newNode).setType(type);//added by czl
 	    }

@@ -45,8 +45,11 @@ class INodeFile extends INode {
 
   protected byte[] header;
   
-  /*add by tony*/
+  /**add by tony**/
   protected HeaderBuffer headerbuffer=null;
+  
+  /**the position of the header in the storagefile**/
+  public long header_offset = -1;
   
   protected BlockInfo blocks[] = null;
   
@@ -59,34 +62,75 @@ class INodeFile extends INode {
   }
 
   protected INodeFile() {
-    blocks = null;
-    //header = new byte[headerSize];
-    header = null;
-     NameNode.LOG.info("INodeFile Default Constructor---------TONY");
-  }
-   /**
-    *  modified by tony
-    */
-  protected INodeFile(PermissionStatus permissions, CodingMatrix codingMatrix, BlockInfo[] blklist,
-          long modificationTime, long atime, long fileSize, long packetSize,HeaderBuffer headerbuf) {
+	    blocks = null;
+	    header = null;
+	    header_offset = -1;
+	  }
+  
+  /**
+   *  modified by tony
+   *  new parameter:
+   *  @param headerbuf
+   */
+ protected INodeFile(PermissionStatus permissions, CodingMatrix codingMatrix, BlockInfo[] blklist,
+         long modificationTime, long atime, long fileSize, long packetSize,HeaderBuffer headerbuf) {
 	super(permissions, modificationTime, atime);
 	
 	header = new byte[headerSize];
 	
-	/********************/
+	/*****add by tony*****/
 	this.setHeaderBuffer(headerbuf);
-	
 	this.setFileSize(fileSize);
 	this.setPacketSize(packetSize);
 	this.setMatrix(codingMatrix);
-	/*************/
-	//serializeHeader();
 	
-	//header=null;
+	this.header_offset = -1;
 	
 	blocks = blklist;
 }
 
+ /***
+  * @author tony 
+  * invoked when the INodeFile is loaded from FSImage
+  * new parameters:
+  * @param header_offset
+  * @param headerbuf
+  */
+ protected INodeFile(PermissionStatus permissions, CodingMatrix codingMatrix, long header_offset,
+		  			  BlockInfo[] blklist, long modificationTime, long atime, long fileSize, 
+		  			  long packetSize,HeaderBuffer headerbuf)
+ {
+		super(permissions, modificationTime, atime);
+		
+		header = new byte[headerSize];
+		this.setHeaderBuffer(headerbuf);
+		
+		this.setFileSize(fileSize);
+		this.setPacketSize(packetSize);
+		this.setMatrix(codingMatrix);
+		
+		this.header_offset = header_offset;
+		
+		blocks = blklist;
+ }
+ 
+ /***
+  * @author tony
+  * invoked in the INodeFileUnderConstruction.convertToInodeFile()
+  */
+ protected INodeFile(INodeFile oldfile)
+ {
+	  super(oldfile);
+	  header = new byte[headerSize];
+	  this.setHeaderBuffer(oldfile.getHeaderBuffer());
+	  this.setFileSize(oldfile.getFileSize());
+	  this.setPacketSize(oldfile.getPacketSize());
+	  this.setMatrix(oldfile.getMatrix());
+	  this.header_offset = oldfile.header_offset;
+	  //changeHeader(oldfile);
+	  this.blocks = oldfile.getBlocks();
+ }
+ 
   /**
    * Set the {@link FsPermission} of this {@link INodeFile}.
    * Since this is a file,
@@ -121,22 +165,44 @@ class INodeFile extends INode {
    * serialize the header vector into the buffer
    * 
    */
-   public void serializeHeader()
-   {
-	NameNode.LOG.info("INodeFile serializeHeader path: "+getFullPathName()+"--------TONYds");
-	this.headerbuffer.put(getFullPathName(), header);
-	this.header=null;
+   public void serializeHeader(){
+	   NameNode.LOG.info("INodeFile serializeHeader "+this+" "+header+" "+this.headerbuffer+"--------TONY ");
+	   
+	   this.headerbuffer.put(this, header);
+	   this.header = null;
    }
+   
+   /***
+    * @author tony
+    * remove the BufferData from the buffer
+    */
+   public void removeFromBuffer()
+   {
+	   NameNode.LOG.info("INodeFile removeFromBuffer "+this+" ------------TONY");
+	   this.headerbuffer.remove(this);
+   }
+   
+   /***
+    *  @author tony
+    *  change the oldfile in the buffer to the newfile 
+    * @param oldfile
+    */
+   public void changeHeader(INodeFile oldfile)
+   {
+	   this.headerbuffer.change(oldfile,this);
+	   this.header = null;
+   }
+   
    /** @author tony
     *  get the header vector from the buffer
     *  @param path  the absolute path of this file
     *  @return the header vector
     * */
-   public byte[] fetchBufferData(String path)
+   public byte[] fetchBufferData()
    {
- 	NameNode.LOG.info("in fetchBufferData in INodeFile-----------TONY");
-	BufferData ans=this.headerbuffer.get(path);
-        NameNode.LOG.info("BufferData: "+ans+"----------TONY");
+	   NameNode.LOG.info("in fetchBufferData in INodeFile "+this+" -----------TONY");
+	   BufferData ans=this.headerbuffer.get(this);
+       NameNode.LOG.info("BufferData: "+ans.toString()+"----------TONY");
 	   return ans.getHead();
    }
    
@@ -150,6 +216,26 @@ class INodeFile extends INode {
    
    /**
     * @author tony
+    */
+   @Override
+   public int hashCode()
+   {
+	   return super.hashCode();
+   }
+   
+   /**
+    * @author tony
+    */
+   @Override
+   public boolean equals(Object o) {
+	    if (!(o instanceof INodeFile)) {
+	      return false;
+	    }
+	    return this.getFullPathName().equals(((INodeFile)o).getFullPathName());
+	}
+   
+   /**
+    * @author tony
     * @param headerbuf
     */
    public void setHeaderBuffer(HeaderBuffer headerbuf)
@@ -159,14 +245,14 @@ class INodeFile extends INode {
    
   /**
    *  Modified by tony 
-   *  
    * @return
    */
   public CodingMatrix getMatrix(){
 	  /****************/
 	  if(header==null)
 	  {
-		  header=fetchBufferData(getFullPathName());
+		  NameNode.LOG.info("in getMatrix()-------------TONY");
+		  header=fetchBufferData();
 	  }
 	  int cur = matrixStart;
 	  byte row = header[cur++];
@@ -178,6 +264,7 @@ class INodeFile extends INode {
 		  }
 	  return matrix;
   }
+  
   public void setMatrix(CodingMatrix matrix) {
 	  int cur = matrixStart;
 	  header[cur++] = matrix.getRow();
@@ -204,7 +291,8 @@ class INodeFile extends INode {
 	  /****************/
 	  if(header==null)
 	  {
-		  header=fetchBufferData(getFullPathName());
+		  NameNode.LOG.info("In getFileSize()-----------TONY");
+		  header=fetchBufferData();
 	  }
       long blockSize = 0;
       int byteOfBlockSize = packetSizeStart - fileSizeStart;
@@ -229,7 +317,8 @@ class INodeFile extends INode {
 	   /****************/
 	   if(header==null)
 	   {
-		  header=fetchBufferData(getFullPathName());
+		   NameNode.LOG.info("In getPacketSize()----------TONY");
+		   header=fetchBufferData();
 	   }
 	   long size = 0;
 	   for(int cur = packetSizeStart; cur < matrixStart; ++cur) {

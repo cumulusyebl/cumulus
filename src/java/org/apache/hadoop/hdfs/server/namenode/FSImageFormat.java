@@ -75,11 +75,21 @@ class FSImageFormat {
     private int imgNamespaceID;
     /** The MD5 sum of the loaded file */
     private MD5Hash imgDigest;
+    /**added by tony**/
+    protected long max_Offset = -1;
 
     Loader(Configuration conf) {
       this.conf = conf;
     }
 
+    /**
+     * @author tony
+     * @return
+     */
+    public long getMax_Offset()
+    {
+    	return this.max_Offset;
+    }
     /**
      * Return the version number of the image that has been loaded.
      * @throws IllegalStateException if load() has not yet been called.
@@ -125,6 +135,9 @@ class FSImageFormat {
       }
     }
 
+    /***
+     * modified by tony
+     */
     void load(File curFile, FSNamesystem targetNamesystem)
       throws IOException
     {
@@ -272,6 +285,7 @@ class FSImageFormat {
           
           
           	CodingMatrix codingMatrix = null;
+          	long header_offset =0;
           	//revised by czl
           	byte type = 0;
           	if (numBlocks>0) {
@@ -279,6 +293,9 @@ class FSImageFormat {
           		type = in.readByte();
           		codingMatrix = CodingMatrix.getMatrixofCertainType(type);
 				codingMatrix.readFields(in);
+				header_offset = in.readLong();
+				if(header_offset>this.max_Offset)
+					this.max_Offset = header_offset;
 			}
           	
           
@@ -300,7 +317,7 @@ class FSImageFormat {
           // without propagating modification time to parent
           parentINode = fsDir.addToParent(pathComponents, parentINode, permissions,
                                           blocks, symlink, replication, modificationTime, 
-                                          atime, nsQuota, dsQuota, codingMatrix, fileSize, type, blockSize, false);
+                                          atime, nsQuota, dsQuota, codingMatrix, header_offset,fileSize, type, blockSize, false);
         }
 
         // load datanode info
@@ -418,6 +435,8 @@ class FSImageFormat {
       }
       return result;
     }
+
+
   }
   
   /**

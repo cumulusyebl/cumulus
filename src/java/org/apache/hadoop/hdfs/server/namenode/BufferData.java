@@ -3,58 +3,71 @@ package org.apache.hadoop.hdfs.server.namenode;
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.util.Arrays;
+
 import org.apache.hadoop.io.*;
-import org.apache.hadoop.io.Writable;
 /**
- * 
  * @author tony
- *
  */
-public class BufferData implements Writable{
+public class BufferData {
 		
-
-
-		/*the absolute path of a INodeFile*/
-		private Text filePath;	
+		/*the INodeFile used as index*/
+		private INodeFile indexFile;
 		
 		/*the head vector of the INodeFile*/
-		private BytesWritable head=null;
+		private byte[] head=null;
 		
-		public BufferData(){
-			this.filePath=new Text();
-			this.head=new BytesWritable();
-		}
-		public BufferData(String filePath,byte[] head){
-			this.filePath=new Text(filePath);
-			this.head=new BytesWritable(head);
+		/**
+		 * new constructor
+		 * @param ifile 	the InodeFile used as index
+		 * @param head		the coding matrix
+		 */
+		public BufferData(INodeFile ifile,byte[] head)
+		{
+			this.indexFile= ifile;
+			this.head= head;
 		}
 		
-		public void setFilePath(String filePath){
-			this.filePath=new Text(filePath);
-		}
-		public String getFilePath(){
-			return this.filePath.toString();
+		public BufferData(INodeFile ifile)
+		{
+			this.indexFile= ifile;
+			this.head=new byte[64];
 		}
 		
 		public void setHead(byte[] head){
-			this.head=new BytesWritable(head);
+			this.head=head;
 		}
 		public byte[] getHead(){
-			return this.head.copyBytes();
+			return this.head;
 		}
-		@Override
-		public void write(DataOutput out) throws IOException {
-			// TODO Auto-generated method stub
-			filePath.write(out);
-			head.write(out);
+		
+		/**
+		 * new get&set for indexFile
+		 * @param ifile
+		 */
+		public void setIndexFile(INodeFile ifile)
+		{
+			this.indexFile=ifile;
 		}
-		@Override
-		public void readFields(DataInput in) throws IOException {
-			// TODO Auto-generated method stub
-			filePath.readFields(in);
-			head.readFields(in);
+		
+		public INodeFile getIndexFile()
+		{
+			return this.indexFile;
+		}
+		
+		public void write(RandomAccessFile out) throws IOException {
+			out.seek(0);
+			out.seek(indexFile.header_offset*64);
+			out.write(this.head);
+		}
+		
+		public void readFields(RandomAccessFile in) throws IOException {
+			 in.seek(0);
+			 in.seek(indexFile.header_offset*64);
+			 in.read(this.head);
 		}
 		public String toString(){
-			return this.filePath.toString()+"----------"+this.head.toString();
+			return "BufferData------"+Arrays.hashCode(this.head);
 		}
 }

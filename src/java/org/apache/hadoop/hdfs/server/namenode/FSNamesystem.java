@@ -2662,7 +2662,9 @@ public class FSNamesystem implements FSConstants, FSNamesystemMBean, FSClusterSt
     return leaseManager.reassignLease(lease, src, newHolder);
   }
 
-
+  /***
+   * modified by tony 2014/4/10
+   */
   private void finalizeINodeFileUnderConstruction(String src, 
       INodeFileUnderConstruction pendingFile) 
       throws IOException, UnresolvedLinkException {

@@ -35,7 +35,9 @@ import org.apache.hadoop.hdfs.security.token.delegation.DelegationTokenIdentifie
 import org.apache.hadoop.hdfs.server.common.Storage;
 import org.apache.hadoop.hdfs.server.common.HdfsConstants.NamenodeRole;
 import org.apache.hadoop.hdfs.server.common.Storage.StorageDirectory;
+
 import static org.apache.hadoop.hdfs.server.common.Util.now;
+
 import org.apache.hadoop.hdfs.server.namenode.FSImage.NameNodeDirType;
 import org.apache.hadoop.hdfs.server.namenode.FSImage.NameNodeFile;
 import org.apache.hadoop.hdfs.server.namenode.JournalStream.JournalType;
@@ -643,7 +645,7 @@ public class FSEditLog {
    * Records the block locations of the last block.
    */
   public void logOpenFile(String path, INodeFileUnderConstruction newNode) {
-
+	NameNode.LOG.info("In FSEditLog logOpenFile--------------------TONY");
     DeprecatedUTF8 nameReplicationPair[] = new DeprecatedUTF8[] { 
       new DeprecatedUTF8(path), 
       FSEditLog.toLogReplication(newNode.getReplication()),
@@ -658,10 +660,11 @@ public class FSEditLog {
             new DeprecatedUTF8(newNode.getClientMachine()));
   }
 
-  /** 
+  /**modified by tony 2014/4/3
    * Add close lease record to edit log.
    */
   public void logCloseFile(String path, INodeFile newNode) {
+	NameNode.LOG.info("In FSEditLog logCloseFile--------------------TONY");
     DeprecatedUTF8 nameReplicationPair[] = new DeprecatedUTF8[] {
       new DeprecatedUTF8(path),
       FSEditLog.toLogReplication(newNode.getReplication()),
@@ -673,7 +676,7 @@ public class FSEditLog {
     logEdit(Ops.OP_CLOSE,
             new ArrayWritable(DeprecatedUTF8.class, nameReplicationPair),
             new ArrayWritable(Block.class, newNode.getBlocks()),
-            newNode.getPermissionStatus(),newNode.getMatrix());
+            newNode.getPermissionStatus(),newNode.getMatrix(),new LongWritable(newNode.header_offset));
   }
   
   /** 

@@ -51,7 +51,9 @@ import org.apache.hadoop.hdfs.server.common.Storage;
 import org.apache.hadoop.hdfs.server.common.StorageInfo;
 import org.apache.hadoop.hdfs.server.common.UpgradeManager;
 import org.apache.hadoop.hdfs.server.common.Util;
+
 import static org.apache.hadoop.hdfs.server.common.Util.now;
+
 import org.apache.hadoop.hdfs.server.common.HdfsConstants.NamenodeRole;
 import org.apache.hadoop.hdfs.server.common.HdfsConstants.NodeType;
 import org.apache.hadoop.hdfs.server.common.HdfsConstants.StartupOption;
@@ -126,6 +128,12 @@ public class FSImage extends Storage {
 
   /**added by tony**/
   protected File bufferStorage=null;
+  
+  /**added by tony**/
+  protected long max_offset = -1;
+  /**added by tony**/
+  protected HeaderBuffer headerBuffer= null;
+  
   /**
    * flag that controls if we try to restore failed storages
    */
@@ -310,6 +318,25 @@ public class FSImage extends Storage {
   {
 	  return this.bufferStorage;
   }
+  
+  /**
+   * @author tony
+   * @return
+   */
+  public long getMaxOffset()
+  {
+	  return this.max_offset;
+  }
+  
+  /**
+   * @author tony
+   * @return
+   */
+  public HeaderBuffer getHeaderBuffer()
+  {
+	  return this.headerBuffer;
+  }
+  
   
 
   List<StorageDirectory> getRemovedStorageDirs() {
@@ -1094,17 +1121,24 @@ public class FSImage extends Storage {
    * "re-save" and consolidate the edit-logs
    */
   boolean loadFSImage(File curFile) throws IOException {
-    FSImageFormat.Loader loader = new FSImageFormat.Loader(conf);
-    loader.load(curFile, getFSNamesystem());
-    /*add by tony*/ 
-    if(this.bufferStorage==null)
-    {
-    	NameNode.LOG.info("Create bufferStorage File in FSImage-------------TONY");
-    	String parentDir=curFile.getAbsoluteFile().getParent();
-    	this.bufferStorage=new File(parentDir+File.separator+
-    			NameNodeFile.HEADER_STORAGE.getName());
-	NameNode.LOG.info("bufferStorage: "+this.bufferStorage+"------TONY");
-    }
+	   /**add by tony**/ 
+   if(this.bufferStorage==null){
+	    NameNode.LOG.info("Create bufferStorage File in FSImage-------------TONY");
+	    String parentDir = curFile.getAbsoluteFile().getParent();
+	    this.bufferStorage = new File(parentDir+File.separator+
+	    						   NameNodeFile.HEADER_STORAGE.getName());
+	    NameNode.LOG.info("bufferStorage: "+this.bufferStorage+"------TONY");
+	    
+	    this.namesystem.dir.headerBuffer = HeaderBuffer.Instance(100, this.bufferStorage, -1);
+	    this.headerBuffer = this.namesystem.dir.headerBuffer;
+	    NameNode.LOG.info("headerBuffer instance in FSImage: "+this.namesystem.dir.headerBuffer+"------------TONY");
+	}
+   
+   FSImageFormat.Loader loader = new FSImageFormat.Loader(conf);
+   loader.load(curFile, getFSNamesystem());
+   /**get the max_offset in the bufferStorage file**/
+   this.max_offset = loader.getMax_Offset();
+   this.headerBuffer.setBufferPosition(this.max_offset);
 
     // Check that the image digest we loaded matches up with what
     // we expected
@@ -1353,11 +1387,10 @@ public class FSImage extends Storage {
        /**
        * add by tony
        */
-      if(this.bufferStorage==null)
-	{
-	 NameNode.LOG.info("Create bufferStorage File in FSImage saveCurrent -------TONY");
-      	this.bufferStorage=getHStorageFile(sd);
-	}
+      if(this.bufferStorage==null){
+    	  NameNode.LOG.info("Create bufferStorage File in FSImage saveCurrent -------TONY");
+      	  this.bufferStorage=getHStorageFile(sd);
+	   }
     }
     if (dirType.isOfType(NameNodeDirType.EDITS))
       editLog.createEditLogFile(getImageFile(sd, NameNodeFile.EDITS));

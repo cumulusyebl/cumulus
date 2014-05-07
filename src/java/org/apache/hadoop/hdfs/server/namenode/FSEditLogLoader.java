@@ -33,7 +33,9 @@ import org.apache.hadoop.hdfs.protocol.HdfsFileStatus;
 import org.apache.hadoop.hdfs.protocol.LayoutVersion;
 import org.apache.hadoop.hdfs.protocol.LayoutVersion.Feature;
 import org.apache.hadoop.hdfs.security.token.delegation.DelegationTokenIdentifier;
+
 import static org.apache.hadoop.hdfs.server.common.Util.now;
+
 import org.apache.hadoop.hdfs.server.common.GenerationStamp;
 import org.apache.hadoop.hdfs.server.common.Storage;
 import org.apache.hadoop.hdfs.server.namenode.FSEditLog.Ops;
@@ -104,6 +106,8 @@ public class FSEditLogLoader {
     return numEdits;
   }
 
+  /**modified by tony
+   * */
   @SuppressWarnings("deprecation")
   int loadEditRecords(int logVersion, DataInputStream in,
       boolean closeOnExit) throws IOException {
@@ -148,9 +152,10 @@ public class FSEditLogLoader {
           // versions > 0 support per file replication
           // get name and replication
           int length = in.readInt();
+          //modified by tony
           if (-7 == logVersion && length != 3||
               -17 < logVersion && logVersion < -7 && length != 4 ||
-              logVersion <= -17 && length != 6) {
+              logVersion <= -17 && length != 7) {
               throw new IOException("Incorrect data format."  +
                                     " logVersion is " + logVersion +
                                     " but writables.length is " +
@@ -193,7 +198,11 @@ public class FSEditLogLoader {
           }
           	CodingMatrix codingMatrix = CodingMatrix.getMatrixofCertainType(type);
           	codingMatrix.readFields(in);
-
+    
+        	/**added by tony**/
+          	LongWritable offset= new LongWritable();
+          	offset.readFields(in);
+          	long headeroffset = offset.get();
           // clientname, clientMachine and block locations of last block.
           if (opcode == Ops.OP_ADD && logVersion <= -12) {
             clientName = FSImageSerialization.readString(in);
@@ -217,10 +226,12 @@ public class FSEditLogLoader {
 
           fsDir.unprotectedDelete(path, mtime);
 
-          // add to the file tree
+          /** modified by tony
+           *  add to the file tree
+           */
           INodeFile node = (INodeFile)fsDir.unprotectedAddFile(
-                                                    path, permissions,
-                                                    codingMatrix, fileSize, blocks, replication, 
+                           							path, permissions,
+                                                    codingMatrix, headeroffset,fileSize, blocks, replication, 
                                                     mtime, atime, blockSize);
           if (isFileUnderConstruction) {
             numOpAdd++;

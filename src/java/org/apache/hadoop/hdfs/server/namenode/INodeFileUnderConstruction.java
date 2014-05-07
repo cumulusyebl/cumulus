@@ -97,18 +97,21 @@ class INodeFileUnderConstruction extends INodeFile {
   // converts a INodeFileUnderConstruction into a INodeFile
   // use the modification time as the access time
   //
- /**
+  /**
    * modified by tony
    * @return
    */
   INodeFile convertToInodeFile() {
-    INodeFile obj = new INodeFile(getPermissionStatus(),
+  /**INodeFile obj = new INodeFile(getPermissionStatus(),
                                   getMatrix(),
                                   getBlocks(),
                                   getModificationTime(),
                                   getModificationTime(),
                                   getFileSize(),
                                   getPacketSize(),getHeaderBuffer());
+   **/
+	  
+    INodeFile obj = new INodeFile(this);
     return obj;
     
   }

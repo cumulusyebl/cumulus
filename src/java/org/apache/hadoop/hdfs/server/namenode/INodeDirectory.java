@@ -75,6 +75,10 @@ class INodeDirectory extends INode {
     assert children != null;
     int low = Collections.binarySearch(children, node.name);
     if (low >= 0) {
+       if(node instanceof INodeFile){
+      	  NameNode.LOG.info("INodeDir addChild,before removeFromBuffer(): "+node+"------------TONY");
+      	  ((INodeFile) node).removeFromBuffer();
+        }
       return children.remove(low);
     } else {
       return null;
@@ -289,6 +293,12 @@ class INodeDirectory extends INode {
       return null;
     node.parent = this;
     children.add(-low - 1, node);
+    //added by tony 
+    if(node instanceof INodeFile)
+    {
+    	NameNode.LOG.info("INodeDir addChild,before serializeHeader(): "+node+"------------TONY");
+    	((INodeFile) node).serializeHeader();
+    }
     // update modification time of the parent directory
     if (setModTime)
       setModificationTime(node.getModificationTime());
