@@ -36,9 +36,11 @@ import org.json.*;
 public class MonitorServlet extends DfsServlet{
 	/** For java.io.Serializable */
 	private static final long serialVersionUID = 1L;
+	/*
 	private static final String PATH_PREFIX = "/user/" + 
-				System.getProperty("hadoop.id.str") + "/";
+				System.getProperty("hadoop.id.str") + "/";*/
 	
+	/*
 	private static String repairPath(String path){
 		if(path == null)
 			return null;
@@ -48,6 +50,7 @@ public class MonitorServlet extends DfsServlet{
 			return path;
 		return PATH_PREFIX + path.substring(1);
 	}
+	*/
 	
 	/**
 	* Service a GET request as described below.
@@ -785,12 +788,12 @@ public class MonitorServlet extends DfsServlet{
 			doBadRequest(request, response, "need path(class: file)");
 			return ;
 		}
-		path = repairPath(path);
+//		path = repairPath(path);
 		
 		//get file status
 		HdfsFileStatus targetStatus = fsn.getFileInfo(path, true);
 		if(targetStatus == null){
-			doBadRequest(request, response, "path(" + path + ")invalid(class: file)");
+			doBadRequest(request, response, "path(" + path + ") invalid(class: file)");
 			return ;
 		}
 		
@@ -817,7 +820,7 @@ public class MonitorServlet extends DfsServlet{
 			jsonobj.put("full_name", 
 						path);
 			String localName;
-			if(path.equalsIgnoreCase(PATH_PREFIX))
+			if(path.equalsIgnoreCase("/"))
 				localName = "/";
 			else{
 				String[] ss = path.split("/");
@@ -1115,9 +1118,9 @@ public class MonitorServlet extends DfsServlet{
 			return ;
 		}
 		
-		path = repairPath(path);
+//		path = repairPath(path);
 		if(!fsn.dir.exists(path)){
-			doBadRequest(request, response, "path(" + path + ")invalid(class: block)");
+			doBadRequest(request, response, "path(" + path + ") invalid(class: block)");
 			return ;
 		}
 		if(fsn.dir.isDir(path)){
