@@ -70,6 +70,10 @@ public interface DatanodeProtocol extends VersionedProtocol {
   final static int DNA_ACCESSKEYUPDATE = 7;  // update access key
   final static int DNA_CUMULUS_RECOVERY = 8; //cumulus recovery a lost block by czl
 
+//seq RCR_NN_APPOINTnc.3 1
+	// added by ds at 2014-4-21
+	// RC recovery a group of blocks added
+	final static int DNA_RC_RECOVERY = 9;
   /** 
    * Register Datanode.
    *

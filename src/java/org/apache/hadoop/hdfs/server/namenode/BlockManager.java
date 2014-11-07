@@ -39,6 +39,7 @@ import org.apache.hadoop.hdfs.protocol.Block;
 import org.apache.hadoop.hdfs.protocol.BlockListAsLongs;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.LocatedBlock;
+import org.apache.hadoop.hdfs.protocol.RegeneratingCodeMatrix;
 import org.apache.hadoop.hdfs.server.common.HdfsConstants.BlockUCState;
 import org.apache.hadoop.hdfs.server.common.HdfsConstants.ReplicaState;
 import org.apache.hadoop.hdfs.server.namenode.FSNamesystem.NumberReplicas;
@@ -102,6 +103,12 @@ public class BlockManager {
   //
   UnderReplicatedBlocks neededReplications = new UnderReplicatedBlocks();
   private PendingReplicationBlocks pendingReplications;
+  
+//seq RCR_NN_CHOOSEnc.2 5
+	// added by ds at 2014-4-21
+	// This is to collect A of blocks in the same group.
+	// And send choose the same new comer for blocks in one group
+	RCRecoveryBlockCollector rcRecoveryBlockCollector = new RCRecoveryBlockCollector();
 
   //  The maximum number of replicas allowed for a block
   int maxReplication;
@@ -618,40 +625,128 @@ public class BlockManager {
     markBlockAsCorrupt(storedBlock, dn);
   }
 
-  private void markBlockAsCorrupt(BlockInfo storedBlock,
-                                  DatanodeInfo dn) throws IOException {
-    assert storedBlock != null : "storedBlock should not be null";
-    DatanodeDescriptor node = namesystem.getDatanode(dn);
-    if (node == null) {
-      throw new IOException("Cannot mark block " + 
-                            storedBlock.getBlockName() +
-                            " as corrupt because datanode " + dn.getName() +
-                            " does not exist. ");
-    }
+//seq RCR_NN_MARK.1 1
+	// modified by ds at 2014-4-24
+	private void markBlockAsCorrupt(BlockInfo storedBlock, DatanodeInfo dn) throws IOException
+	{
+		// inner added by ds at 2014-4-24
+		// inner added by ds begins
+		boolean isRegeneratingRecovery = RegeneratingCodeMatrix.isRegeneratingCodeRecovery();
+		if (isRegeneratingRecovery)
+		{
+			markSameGroupBlocksAsCorrupt(storedBlock, dn);
+			return;
+		}
+		// inner added by ds ends
 
-    INodeFile inode = storedBlock.getINode();
-    if (inode == null) {
-      NameNode.stateChangeLog.info("BLOCK NameSystem.markBlockAsCorrupt: " +
-                                   "block " + storedBlock +
-                                   " could not be marked as corrupt as it" +
-                                   " does not belong to any file");
-      addToInvalidates(storedBlock, node);
-      return;
-    } 
+		assert storedBlock != null : "storedBlock should not be null";
+		DatanodeDescriptor node = namesystem.getDatanode(dn);
+		if (node == null)
+		{
+			throw new IOException("Cannot mark block " + storedBlock.getBlockName() + " as corrupt because datanode "
+					+ dn.getName() + " does not exist. ");
+		}
 
-    // Add replica to the data-node if it is not already there
-    node.addBlock(storedBlock);
+		INodeFile inode = storedBlock.getINode();
+		if (inode == null)
+		{
+			NameNode.stateChangeLog.info("BLOCK NameSystem.markBlockAsCorrupt: " + "block " + storedBlock
+					+ " could not be marked as corrupt as it" + " does not belong to any file");
+			addToInvalidates(storedBlock, node);
+			return;
+		}
 
-    // Add this replica to corruptReplicas Map
-    corruptReplicas.addToCorruptReplicasMap(storedBlock, node);
-    if (countNodes(storedBlock).liveReplicas() >= inode.getReplication()) {
-      // the block is over-replicated so invalidate the replicas immediately
-      invalidateBlock(storedBlock, node);
-    } else {
-      // add the block to neededReplication
-      updateNeededReplications(storedBlock, -1, 0);
-    }
-  }
+		// Add replica to the data-node if it is not already there
+		node.addBlock(storedBlock);
+
+		// Add this replica to corruptReplicas Map
+		corruptReplicas.addToCorruptReplicasMap(storedBlock, node);
+		if (countNodes(storedBlock).liveReplicas() >= inode.getReplication())
+		{
+			// the block is over-replicated so invalidate the replicas
+			// immediately
+			invalidateBlock(storedBlock, node);
+		}
+		else
+		{
+			// add the block to neededReplication
+			updateNeededReplications(storedBlock, -1, 0);
+		}
+	}
+	
+	// seq RCR_NN_MARK.1 2
+	/**
+	 * This method is to mark blocks in the same group as corrupt
+	 * 
+	 * @author ds
+	 */
+	private void markSameGroupBlocksAsCorrupt(BlockInfo representativeBlockInfo, DatanodeInfo dn) throws IOException
+	{
+		assert representativeBlockInfo != null : "storedBlock should not be null";
+		DatanodeDescriptor node = namesystem.getDatanode(dn);
+		if (node == null)
+		{
+			throw new IOException("Cannot mark block " + representativeBlockInfo.getBlockName()
+					+ " as corrupt because datanode " + dn.getName() + " does not exist. ");
+		}
+
+		INodeFile inode = representativeBlockInfo.getINode();
+		if (inode == null)
+		{
+			NameNode.stateChangeLog.info("BLOCK NameSystem.markBlockAsCorrupt: " + "block " + representativeBlockInfo
+					+ " could not be marked as corrupt as it" + " does not belong to any file");
+			addToInvalidates(representativeBlockInfo, node);
+			return;
+		}
+
+		// inner added by ds at 2014-4-23
+		// inner added by ds begins
+		
+		// get blocks of the file
+		BlockInfo[] blockInfos = inode.getBlocks();
+		RegeneratingCodeMatrix matrix = (RegeneratingCodeMatrix) inode.getMatrix();
+		int a = matrix.getA();
+		// get group index
+		int groupIndex = -1;
+		for (int i = 0; i < blockInfos.length; i++)
+		{
+			if (blockInfos[i].equals(representativeBlockInfo))
+			{
+				groupIndex = i / a;
+				break;
+			}
+		}
+		if (groupIndex != -1)
+		{
+			// mark blocks in group as corrupt
+			for (int i = 0; i < a; i++)
+			{
+				//BlockInfo storedBlock = blockInfos[groupIndex + i];
+				BlockInfo storedBlock = blockInfos[groupIndex*a + i]; //2014-7-18 correct
+
+				// Add replica to the data-node if it is not already there
+				node.addBlock(storedBlock);
+
+				// Add this replica to corruptReplicas Map
+				corruptReplicas.addToCorruptReplicasMap(storedBlock, node);
+				if (countNodes(storedBlock).liveReplicas() >= inode.getReplication())
+				{
+					// the block is over-replicated so invalidate the replicas
+					// immediately
+					invalidateBlock(storedBlock, node);
+
+				}
+				else
+				{
+					// add the block to neededReplication
+					updateNeededReplications(storedBlock, -1, 0);
+				}
+
+			}
+		}
+		// inner added by ds ends
+
+	}
 
   /**
    * Invalidates the given block on the given datanode.
@@ -727,6 +822,149 @@ public class BlockManager {
     return blockCnt;
   }
 
+//seq RCR_NN_CHOOSEnc.2 4
+	/***
+	 * this class is for collecting A of blocks before send them to be recovered. A is the count of blocks one datanode
+	 * contains. created at 2014-4-19. modified at
+	 * 
+	 * @author ds 0.0
+	 */
+	class RCRecoveryBlockCollector
+	{
+		ArrayList<ArrayList<Block>> blockGroupList = new ArrayList<ArrayList<Block>>();
+
+		boolean add(Block newBlock, int priority) throws Exception
+		{
+			if (blockGroupList.size() == 0)
+			{// this case only reached for the very first block to an empty
+				// blocksList
+				ArrayList<Block> newBlockGroup = new ArrayList<Block>();
+				newBlockGroup.add(newBlock);
+				blockGroupList.add(newBlockGroup);
+				// 2014-4-27 add
+				return true;
+			}
+			int cur;
+			int fixedSize = blockGroupList.size();
+			// for (cur = 0; cur < blocksList.size(); cur++) //wrong as
+			// blocksList.size() is not fixed
+			for (cur = 0; cur < fixedSize; cur++)
+			{
+				ArrayList<Block> curBlockGroup = blockGroupList.get(cur);
+
+				Block representBlock = curBlockGroup.get(0);// representBlock:
+				// representative
+				// block
+				// if new block and representative block have the same fileINode
+				// and
+				// are in the same row of V matrix, then new block join
+				// curBlockGroup
+
+				// judge fileINode
+				INodeFile representINode = blocksMap.getINode(representBlock);
+				INodeFile newINode = blocksMap.getINode(newBlock);
+				if (representINode.equals(newINode))
+				{
+					// judge row of V matrix
+					int a = ((RegeneratingCodeMatrix) representINode.getMatrix()).getA();
+					int d = a;
+					int representIndex = getIndexInFileBlocks(representBlock);
+					int newIndex = getIndexInFileBlocks(newBlock);
+					if (representIndex / a == newIndex / a)
+					{
+						if(curBlockGroup.contains(newBlock))
+						{//already in curGroup
+							return false ;
+						}
+						// join in curBlockGroup
+						curBlockGroup.add(newBlock);
+						// judge more
+						// if collect A amount of blocks now
+						if (curBlockGroup.size() == a)
+						{// all A of blocks are collected, send them to be
+							// recovered
+							// get a newComer for representBlock, also for
+							// curBlockGroup
+							Vector<BlockInfo> representBlockInfos = new Vector<BlockInfo>();
+							DatanodeDescriptor newComer = chooseNewComer(representBlock, representBlockInfos);
+							//
+							if (newComer == null)
+							{
+								
+								blockGroupList.remove(cur) ;
+								
+								StringBuffer stringBuffer = new StringBuffer() ;
+								stringBuffer.append("RCRecovery: could not get new comer for lost blocks: ") ;
+								for (int i = 0; i < curBlockGroup.size(); i++)
+								{
+									stringBuffer.append(curBlockGroup.get(i).getBlockName()).append(" ") ;
+								}
+								FSNamesystem.LOG.warn(stringBuffer.toString()) ;
+								throw new Exception(stringBuffer.toString()) ;
+							}
+							// add representativeBlock to new comer's
+							// CumulusRecovery
+							BlockInfo representBlockInfo = representBlockInfos.remove(0);
+							newComer.addBlockToBeRecoveredCumulus(representBlockInfo);
+
+							for (Block block : curBlockGroup)
+							{
+								// invalidate blocks in curBlockGroup
+								/// duplicated deletion 2014-5-3
+								///BlockInfo blockInfo = blocksMap.getStoredBlock(block);
+								///List<Block> blocklist = new ArrayList<Block>();
+								///blocklist.add(block);
+								///DatanodeDescriptor datanodeDescriptor = blockInfo.getDatanode(0);
+								///datanodeDescriptor.addBlocksToBeInvalidated(blocklist);
+								//
+								namesystem.writeLock();
+								synchronized (neededReplications)
+								{
+									neededReplications.remove(block, priority); // remove
+									// from
+									// neededReplications
+									replIndex--;
+
+									pendingReplications.add(block, 1);
+								}
+								namesystem.writeUnlock();
+							}
+
+							blockGroupList.remove(cur);
+
+						}
+						break; // important
+					}
+				}
+				// new block does not join in curBlockGroup
+			}
+
+			if (cur == fixedSize)
+			{// new block has not join any blocks, then build a new blocks for
+				// him
+				ArrayList<Block> newBlockGroup = new ArrayList<Block>();
+				newBlockGroup.add(newBlock);
+				blockGroupList.add(newBlockGroup);
+			}
+			return true;
+		}
+
+		private int getIndexInFileBlocks(Block block)
+		{
+			int i = 0;
+			INodeFile inode = blocksMap.getINode(block);
+			BlockInfo[] fileBlocks = inode.getBlocks();
+			for (i = 0; i < fileBlocks.length; i++)
+			{
+				if (fileBlocks[i].getBlockId() == block.getBlockId())
+				{
+					return i;
+				}
+			}
+			return -1;
+		}
+	}
+
   /**
    * Scan blocks in {@link #neededReplications} and assign replication
    * work to data-nodes they belong to.
@@ -753,6 +991,51 @@ public class BlockManager {
     }
     return scheduledReplicationCount;
   }
+  
+//seq RCR_NN_CHOOSEnc.2 3
+	/**
+	 * overload for rcr. rcr means regenerating coding Recovery. src : int computeReplicationWork(int blocksToProcess)
+	 * throws IOException. created at 2014-4-21. modified at
+	 * 
+	 * @author ds
+	 */
+	int computeReplicationWork(boolean rcr, int blocksToProcess) throws IOException
+	{
+		if (!rcr)
+		{
+			return computeReplicationWork(blocksToProcess);
+		}
+		// Choose the blocks to be replicated
+		List<List<Block>> blocksToReplicate = chooseUnderReplicatedBlocks(blocksToProcess);
+
+		// replicate blocks
+		int scheduledReplicationCount = 0;
+		for (int i = 0; i < blocksToReplicate.size(); i++)
+		{
+			for (Block block : blocksToReplicate.get(i))
+			{
+				// if (computeReplicationWorkForBlock(block, i)) { modified by
+				// czl
+				// if (computeRecoveryWorkForBlock(block, i))
+				// {
+				// scheduledReplicationCount++;
+				// }
+				//
+				
+				try
+				{
+					if (rcRecoveryBlockCollector.add(block, i))
+					{
+						scheduledReplicationCount++;
+					}
+				}
+				catch (Exception e)
+				{
+				}
+			}
+		}
+		return scheduledReplicationCount;
+	}
 
   /**
    * Get a list of block lists to be replicated The index of block lists

@@ -100,7 +100,10 @@ class ReplicaInPipeline extends ReplicaInfo
 
   @Override
   public long getVisibleLength() {
-    return -1;
+	//seq RCR_DN_COMPUTE.2 1
+		// modified by ds at 2014-4-29
+		//return -1;
+		return getNumBytes() ;
   }
   
   @Override  //ReplicaInfo

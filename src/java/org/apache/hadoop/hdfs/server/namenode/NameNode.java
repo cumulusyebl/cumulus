@@ -59,6 +59,7 @@ import org.apache.hadoop.hdfs.protocol.HdfsFileStatus;
 import org.apache.hadoop.hdfs.protocol.LocatedBlock;
 import org.apache.hadoop.hdfs.protocol.LocatedBlocks;
 import org.apache.hadoop.hdfs.protocol.RSCoderProtocol;
+import org.apache.hadoop.hdfs.protocol.RegeneratingCodeMatrix;
 import org.apache.hadoop.hdfs.protocol.UnregisteredNodeException;
 import org.apache.hadoop.hdfs.protocol.UnresolvedPathException;
 import org.apache.hadoop.hdfs.security.token.block.ExportedBlockKeys;
@@ -871,8 +872,17 @@ public class NameNode implements NamenodeProtocols, FSConstants {
         excludedNodesSet.put(node, node);
       }
     }
-    LocatedBlock[] locatedBlock = 
-      namesystem.getAdditionalBlock(src, clientName, previous, excludedNodesSet);
+    // seq LCTBLK.1 1
+	// modified by ds at 2014-4-23
+	// modified by ds begins
+
+	// call new getAdditionalBlock
+	// //LocatedBlock[] locatedBlocks = namesystem.getAdditionalBlock(
+	// // src, clientName, previous, excludedNodesSet);
+	boolean isRegeneratingCodeRecovery = RegeneratingCodeMatrix.isRegeneratingCodeRecovery();
+	LocatedBlock[] locatedBlock = namesystem.getAdditionalBlock(isRegeneratingCodeRecovery, src, clientName,
+			previous, excludedNodesSet);
+	// modified by ds ends
     if (locatedBlock != null)
       myMetrics.numAddBlockOps.inc();
     return locatedBlock;

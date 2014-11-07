@@ -24,10 +24,12 @@ import java.io.BufferedOutputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketAddress;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.UnknownHostException;
@@ -74,6 +76,7 @@ import org.apache.hadoop.hdfs.protocol.FSConstants;
 import org.apache.hadoop.hdfs.protocol.LocatedBlock;
 import org.apache.hadoop.hdfs.protocol.RSCoderProtocol;
 import org.apache.hadoop.hdfs.protocol.RecoveryInProgressException;
+import org.apache.hadoop.hdfs.protocol.RegeneratingCodeMatrix;
 import org.apache.hadoop.hdfs.protocol.UnregisteredNodeException;
 import org.apache.hadoop.hdfs.protocol.DataTransferProtocol.BlockConstructionStage;
 import org.apache.hadoop.hdfs.security.token.block.BlockTokenIdentifier;
@@ -103,6 +106,7 @@ import org.apache.hadoop.hdfs.server.protocol.DisallowedDatanodeException;
 import org.apache.hadoop.hdfs.server.protocol.InterDatanodeProtocol;
 import org.apache.hadoop.hdfs.server.protocol.KeyUpdateCommand;
 import org.apache.hadoop.hdfs.server.protocol.NamespaceInfo;
+import org.apache.hadoop.hdfs.server.protocol.RCRecoveryCommand;
 import org.apache.hadoop.hdfs.server.protocol.ReplicaRecoveryInfo;
 import org.apache.hadoop.hdfs.server.protocol.UpgradeCommand;
 import org.apache.hadoop.hdfs.server.protocol.BlockRecoveryCommand.RecoveringBlock;
@@ -1101,6 +1105,18 @@ public class DataNode extends Configured
     	CumulusRecoveryCommand ccmdCommand = (CumulusRecoveryCommand)cmd;
     	new Thread(new CumulusRecovery(ccmdCommand.getLostColumn(), ccmdCommand.getLocatedBlks(), ccmdCommand.getMatrix())).start();
     	break;
+	// seq RCR_DN_EXECMD.1 1
+	// added by ds at 2014-4-24
+	case DatanodeProtocol.DNA_RC_RECOVERY:
+	{
+		LOG.info("DNA_RC_RECOVERY" + " ------dsLog ");
+		RCRecoveryCommand rcRecoveryCmd = (RCRecoveryCommand) cmd;
+		RCRecoveryThreadTarget recoveryTarget = new RCRecoveryThreadTarget(rcRecoveryCmd.getLostRow(),
+				rcRecoveryCmd.getLocatedBlks(), rcRecoveryCmd.getMatrix());
+		Thread rcRecoveryThread = new Thread(recoveryTarget);
+		rcRecoveryThread.start();
+		break;
+	}
     default:
       LOG.warn("Unknown DatanodeCommand action: " + cmd.getAction());
     }
@@ -1688,6 +1704,762 @@ public class DataNode extends Configured
 	  
   }
   
+//seq RCR_DN_MAIN.1 2
+	/**
+	 * rc(regenerating code)recovery thread target, changed on basis of CumulusRecovery. created at 2014-4-17. modified
+	 * at 2014-4-24,2014-4-25.
+	 * 
+	 * @author ds
+	 */
+	public class RCRecoveryThreadTarget implements Runnable
+	{
+		byte failednodeRow; // the row index of failed node in V matrix
+		LocatedBlock[] fileLocatedBlocks;// all LocatedBlocks of the file
+		CodingMatrix matrix;//
+
+		byte n; // how many storage nodes for a file
+		byte k; // min amount of blocks to reconstruct file
+		byte d; // how many helper nodes
+		byte a; // how many blocks a node stores
+		byte B; // how many cuts the file was cut
+
+		byte[] helpernodeRows;// the row indexs of helper node in V matrix
+
+		// added at 2014-4-24
+		// object for waiting multi thread
+		Object waitResult;
+		// how many threads are getting result LocatedBlocks from helper nodes
+		int waitResultCount;
+		LocatedBlock[] resultLocatedBlocks;
+
+		/**
+		 * @param failednodeRow
+		 *            the first of d lost blocks
+		 * @param fileLocatedBlocks
+		 *            blocks the file contains
+		 * @param matrix
+		 *            the RC matrix
+		 */
+		public RCRecoveryThreadTarget(byte failednodeRow, LocatedBlock[] fileLocatedBlocks, CodingMatrix matrix)
+		{
+			this.failednodeRow = failednodeRow;
+			this.fileLocatedBlocks = fileLocatedBlocks;
+			this.matrix = (RegeneratingCodeMatrix) matrix;
+
+			this.n = (byte) this.matrix.getStoreFileNodesNum();
+			this.d = (byte) this.matrix.getRecoveryNodesNum();
+			this.a = this.d;
+			this.B = (byte) this.matrix.getFileCutsNum();
+
+			this.helpernodeRows = new byte[d];
+			chooseHelperRows();
+
+			this.waitResult = new Object();
+			this.resultLocatedBlocks = new LocatedBlock[d];
+		}
+
+		@Override
+		public void run()
+		{
+			long start = System.currentTimeMillis();
+			// inform helper nodes to compute result blocks
+			getResultBlocks();
+
+			long getResultBlocksEnd = System.currentTimeMillis();
+			LOG.info("getting the result blocks uses time : " + (getResultBlocksEnd - start) + "ms");
+			// / get lost blocks
+			Block[] lostBlocks = new Block[a];
+			for (byte i = 0; i < a; i++)
+			{
+				int index = failednodeRow * a + i;
+				lostBlocks[i] = fileLocatedBlocks[index].getBlock();
+			}
+
+			// / get repairInverseMatrix
+			byte[][] repairInverseMatrix = getRepairInverseMatrix();
+
+			// decode and recover
+			decodeAndRecover(lostBlocks, resultLocatedBlocks, repairInverseMatrix);
+
+			long decodeAndRecoverEnd = System.currentTimeMillis();
+			LOG.info("decodeing and recovering the lost blocks uses time : "
+					+ (decodeAndRecoverEnd - getResultBlocksEnd) + "ms");
+			// inform helper nodes to delete temporary result block
+			informHelpernodesToEnd(resultLocatedBlocks);
+			long informHelpernodeToEndEnd = System.currentTimeMillis();
+
+			LOG.info("informing helper node to end recovery uses time:"
+					+ (informHelpernodeToEndEnd - decodeAndRecoverEnd) + "ms");
+			long recoveryEnd = System.currentTimeMillis() - start;
+			LOG.info("RCRecovery uses time :" + (recoveryEnd-start) + "ms");
+		}
+
+		private InterDatanodeProtocol getHelpernode(DatanodeInfo helperDatanodeInfo)
+		{
+			// get helper node
+			InterDatanodeProtocol helpernode = null;
+			DatanodeID helpernodeID = (DatanodeID) helperDatanodeInfo;
+			try
+			{
+				if (dnRegistration.equals(helpernodeID))
+				{
+					helpernode = (InterDatanodeProtocol) this;
+				}
+				else
+				{
+					helpernode = (InterDatanodeProtocol) DataNode.createInterDataNodeProtocolProxy(helpernodeID,
+							getConf(), socketTimeout);
+				}
+			}
+			catch (IOException e)
+			{
+				LOG.warn("get helpernode InterDatanodeProtocol " + " EXCEPTION " + e.toString() + " ------dsLog ");
+				return null;
+			}
+			return helpernode;
+		}
+
+		private void getResultBlocks()
+		{
+			// fill resultBlock list disordered, disorder is because multi threads
+			waitResultCount = 0;
+			for (byte helper = 0; helper < d; helper++)
+			{
+				// get helperDatanodeInfo
+				DatanodeInfo helperDatanodeInfo;
+				int repreBlockIndex = helpernodeRows[helper] * a;
+				helperDatanodeInfo = fileLocatedBlocks[repreBlockIndex].getLocations()[0];
+
+				// get helper node
+				InterDatanodeProtocol helpernode = getHelpernode(helperDatanodeInfo);
+
+				// get computeBlocks
+				Block[] computeBlocks = new Block[a];
+				for (byte i = 0; i < a; i++)
+				{
+					int index = helpernodeRows[helper] * a + i;
+					computeBlocks[i] = fileLocatedBlocks[index].getBlock();
+
+				}
+				// get failednodeVector
+				byte[] failednodeVector = getFailednodeVector();
+
+				// call IPC method, fill resultBlock list disordered in multi threads
+				FillResultLocatedBlocksThreadTarget threadTarget = new FillResultLocatedBlocksThreadTarget(helpernode,
+						computeBlocks, failednodeVector, helperDatanodeInfo);
+				Thread thread = new Thread(threadTarget);
+				try
+				{
+					thread.start();
+				}
+				catch (RuntimeException e)
+				{
+					// need to refine
+					LOG.warn("RCR thread has to be terminated " + " ------dsLog ");
+					return;
+				}
+				synchronized (waitResult)
+				{
+					waitResultCount++;
+					waitResult.notifyAll();
+				}
+			}
+			// / waiting for result
+			while (true)
+			{
+				synchronized (waitResult)
+				{
+					if (waitResultCount == 0)
+					{
+						break;
+					}
+					else
+					{
+
+						try
+						{
+							waitResult.wait();
+						}
+						catch (InterruptedException e)
+						{
+							LOG.warn("waiting for result" + " InterruptedException " + e.toString() + " ------dsLog ");
+							LOG.info("RCR thread has to be terminated " + " ------dsLog ");
+							return;
+						}
+
+					}
+				}
+			}
+		}
+
+		private void informHelpernodesToEnd(LocatedBlock[] resultLocatedBlocks)
+		{
+			for (byte helper = 0; helper < d; helper++)
+			{
+				// get helperDatanodeInfo
+				DatanodeInfo helperDatanodeInfo;
+				int repreBlockIndex = helpernodeRows[helper] * a;
+				helperDatanodeInfo = fileLocatedBlocks[repreBlockIndex].getLocations()[0];
+
+				// get helper node
+				InterDatanodeProtocol helpernode = getHelpernode(helperDatanodeInfo);
+				try
+				{
+					helpernode.endRCRecovery(resultLocatedBlocks[helper].getBlock());
+				}
+				catch (IOException e)
+				{
+					LOG.warn("inform helper endRCR i = " + helper + " InterruptedException " + e.toString()
+							+ " ------dsLog ");
+					LOG.info("RCR thread has to be terminated " + " ------dsLog ");
+					return;
+				}
+			}
+		}
+
+		// added at 2014-4-24
+		private class FillResultLocatedBlocksThreadTarget implements Runnable
+		{
+
+			InterDatanodeProtocol helper;
+			Block[] computeBlocks;
+			byte[] failednodeVector;
+			DatanodeInfo helperDatanodeInfo;
+
+			public FillResultLocatedBlocksThreadTarget(InterDatanodeProtocol helper, Block[] computeBlocks,
+					byte[] failednodeVector, DatanodeInfo helperDatanodeInfo)
+			{
+				super();
+				this.helper = helper;
+				this.computeBlocks = computeBlocks;
+				this.failednodeVector = failednodeVector;
+				this.helperDatanodeInfo = helperDatanodeInfo;
+			}
+
+			@Override
+			public void run()
+			{
+				LocatedBlock resultLocatedBlock = null;
+				try
+				{
+					resultLocatedBlock = helper.beginRCRecovery(helperDatanodeInfo, computeBlocks, failednodeVector);
+				}
+				catch (IOException e)
+				{
+					LOG.warn(" get result thread" + " RuntimeException " + e.toString() + " ------dsLog ");
+					throw new RuntimeException("get result tread running" + " EXCEPTION ", e);
+
+				}
+				synchronized (waitResult)
+				{
+					for (int i = 0; i < d; i++)
+					{
+						// get helperDatanodeInfo
+						DatanodeInfo helperDatanodeInfo;
+						int repreBlockIndex = helpernodeRows[i] * a;
+						helperDatanodeInfo = fileLocatedBlocks[repreBlockIndex].getLocations()[0];
+						if (helperDatanodeInfo.equals(resultLocatedBlock.getLocations()[0]))
+						{
+							resultLocatedBlocks[i] = resultLocatedBlock;
+							break;
+						}
+					}
+					waitResultCount--;
+					waitResult.notifyAll();
+				}
+
+			}
+		}
+
+		// This method is abstracted to keep tidy in constructor
+		private void chooseHelperRows()
+		{// choose front d rows in V matrix who do not include lost row
+			for (byte count = 0, row = 0; count < d && row < n; row++)// 6 : n
+			// need to refine
+			{
+				if (failednodeRow != row)
+				{
+					helpernodeRows[count] = row;
+					count++;
+				}
+			}
+		}
+
+		private byte[][] getRepairInverseMatrix()
+		{
+			// need to refine
+			// get V matrix : n*a
+			byte[][] v = this.matrix.getVandermondeMatrix();
+			// get repair matrix in short : d*a
+			short[][] repairMatrixInShort = new short[d][a];
+			for (int helper = 0; helper < d; helper++)
+			{
+				int helpernodeRow = helpernodeRows[helper];
+				for (int i = 0; i < a; i++)
+				{
+					byte element = v[helpernodeRow][i];
+					repairMatrixInShort[helper][i] = (short) (element >= 0 ? element : element + 256);
+				}
+			}
+			// get inverse of repair matrix in short: d*a
+			short[][] repairInverseMatrixInShort = RSCoderProtocol.getRSP().InitialInvertedCauchyMatrix(
+					repairMatrixInShort);
+
+			// get inverse of repair matrix
+			byte[][] repairInverseMatrix = new byte[d][a];
+			for (int i = 0; i < repairInverseMatrix.length; i++)
+			{
+				for (int j = 0; j < repairInverseMatrix[i].length; j++)
+				{
+					// repairInverseMatrix[i][j] = (byte) repairMatrixInShort[i][j]; //2014-4-29
+					repairInverseMatrix[i][j] = (byte) repairInverseMatrixInShort[i][j];
+
+				}
+			}
+			return repairInverseMatrix;
+		}
+
+		private byte[] getFailednodeVector()
+		{
+			// get V matrix : n*a
+			byte[][] v = this.matrix.getVandermondeMatrix();
+			// get failednodeVector
+			byte[] vectorFailednode = v[failednodeRow];
+
+			return vectorFailednode;
+		}
+
+		private void decodeAndRecover(Block[] lostBloks, LocatedBlock[] resultLocatedBlocks,
+				byte[][] repairInverseMatrix)
+		{
+			final int d = resultLocatedBlocks.length;
+			final int a = d;
+			final int unitSize = 512;
+
+			// create BlockReaders
+			BlockReader blockReaders[] = new BlockReader[d];
+			for (int i = 0; i < d; i++)
+			{
+				try
+				{
+					// socket
+					Socket socket = new Socket();
+					SocketAddress address = NetUtils.createSocketAddr(resultLocatedBlocks[i].getLocations()[0]
+							.getName());
+					NetUtils.connect(socket, address, 1000);
+					// create BlockReader
+					blockReaders[i] = BlockReader.newBlockReader(socket, "cumulus lost recover", resultLocatedBlocks[i]
+							.getBlock(), resultLocatedBlocks[i].getBlockToken(), 0, resultLocatedBlocks[i]
+							.getBlockSize(), 1024 * 1024 * 4);
+				}
+				catch (IOException e)
+				{
+
+					LOG.warn("create BlockReader i=" + i + " EXCEPTION " + e.toString() + " ------dsLog ");
+					return;
+				}
+			}
+
+			// create new files and new checksum file for the lost blocks
+			ReplicaInPipelineInterface[] replicaInfos = new ReplicaInPipelineInterface[a];
+			for (int i = 0; i < a; i++)
+			{
+				try
+				{
+					replicaInfos[i] = data.createRbw(lostBloks[i]);
+				}
+				catch (IOException e)
+				{
+					LOG.warn("create new files i=" + i + " EXCEPTION " + e.toString() + " ------dsLog ");
+					return;
+				}
+			}
+
+			// create outs to blocks file and outs to checksum files
+			OutputStream[] outs = new OutputStream[a];
+			DataOutputStream[] checksumOuts = new DataOutputStream[a];
+			for (int i = 0; i < a; i++)
+			{
+				try
+				{
+					FSDataset.BlockWriteStreams streams = null;
+					// need to reconsider
+					streams = replicaInfos[i].createStreams(true, unitSize, 4);
+					outs[i] = streams.dataOut;
+					checksumOuts[i] = new DataOutputStream(new BufferedOutputStream(streams.checksumOut,
+							SMALL_BUFFER_SIZE));
+
+				}
+				catch (IOException e)
+				{
+					LOG.warn("create outs i=" + i + " EXCEPTION " + e.toString() + " ------dsLog ");
+					return;
+				}
+			}
+
+			// create chescksum
+			DataChecksum checksum = null;
+			checksum = DataChecksum.newDataChecksum(DataChecksum.CHECKSUM_CRC32, unitSize);
+
+			// write header to checksumOuts
+			for (int i = 0; i < a; i++)
+			{
+				try
+				{
+					// /write header to checksumOuts
+					BlockMetadataHeader.writeHeader(checksumOuts[i], checksum);
+				}
+				catch (IOException e)
+				{
+					LOG.warn("write header to checksumOuts i=" + i + " EXCEPTION " + e.toString() + " ------dsLog ");
+					return;
+				}
+			}
+
+			long bytesCount = 0;
+			while (true)
+			{
+				int maxLen = -1;
+				// read bytes from ins to inBufs
+				byte[][] inBufs = new byte[d][unitSize];
+				for (int i = 0; i < d; i++)
+				{
+					try
+					{
+						int inLen = -1;
+						inLen = blockReaders[i].read(inBufs[i]);
+						if (inLen > maxLen)
+						{
+							maxLen = inLen;
+						}
+					}
+					catch (IOException e)
+					{
+						LOG.warn("read bytes from ins to inBufs i=" + i + " EXCEPTION " + e.toString()
+								+ " ------dsLog ");
+						return;
+					}
+				}
+				// judge last read how many bytes
+				if (maxLen == -1)
+				{
+					break;
+				}
+
+				LOG.info("maxLen = " + maxLen + " ------dsLog ");
+				// repairMatrixInverse left multiply inBufs, write results to
+				// outBufs, more details see draft
+				byte[][] outBufs = new byte[a][unitSize];
+				for (int i = 0; i < d; i++)
+				{
+					for (int k = 0; k < unitSize; k++)
+					{
+						for (int j = 0; j < d; j++)
+						{
+							byte f1 = repairInverseMatrix[i][j];
+							byte f2 = inBufs[j][k];
+							outBufs[i][k] ^= RSCoderProtocol.getRSP().mult(f1, f2);
+						}
+					}
+				}
+				// write to outs
+				for (int i = 0; i < a; i++)
+				{
+					try
+					{
+						outs[i].write(outBufs[i], 0, maxLen);
+					}
+					catch (IOException e)
+					{
+						LOG.warn("write to outs i=" + i + " EXCEPTION " + e.toString() + " ------dsLog ");
+						return;
+					}
+				}
+
+				// compute checksum and write results to checksunOuts
+				for (int i = 0; i < a; i++)
+				{
+					checksum.update(outBufs[i], 0, maxLen);
+					int integer = (int) checksum.getValue();
+					byte[] checksumValueBuf = new byte[4];
+					checksumValueBuf[0] = (byte) ((integer >>> 24) & 0xFF);
+					checksumValueBuf[1] = (byte) ((integer >>> 16) & 0xFF);
+					checksumValueBuf[2] = (byte) ((integer >>> 8) & 0xFF);
+					checksumValueBuf[3] = (byte) ((integer >>> 0) & 0xFF);
+					checksum.reset();
+					// write to checksumOut
+					try
+					{
+						checksumOuts[i].write(checksumValueBuf);
+					}
+					catch (IOException e)
+					{
+						LOG.warn("write to checksumOuts i=" + i + " EXCEPTION " + e.toString() + " ------dsLog ");
+						return;
+					}
+				}
+
+				// bytesCount update
+				bytesCount += maxLen;
+			}
+			// close and flush
+			for (int i = 0; i < d; i++)
+			{
+				try
+				{
+					outs[i].flush();
+					checksumOuts[i].flush();
+					outs[i].close();
+					checksumOuts[i].close();
+				}
+				catch (IOException e)
+				{
+					LOG.warn("close and flush i = " + i + " EXCEPTION " + e.toString() + " ------dsLog ");
+					return;
+				}
+			}
+
+			// finalize and close replicas and blocks
+			LOG.info("bytesCount: " + bytesCount + " ------dsLog ");
+
+			for (int i = 0; i < a; i++)
+			{
+				try
+				{
+					replicaInfos[i].setNumBytes(bytesCount);
+					replicaInfos[i].setBytesAcked(bytesCount);
+					lostBloks[i].setNumBytes(bytesCount);
+					data.finalizeBlock(lostBloks[i]);
+					myMetrics.blocksWritten.inc();
+					closeBlock(lostBloks[i], DataNode.EMPTY_DEL_HINT);
+
+				}
+				catch (IOException e)
+				{
+					LOG.warn("finalize and close i=" + i + " EXCEPTION " + e.toString() + " ------dsLog ");
+					return;
+				}
+			}
+
+		}
+	}
+
+	// seq RCR_DN_COMPUTE.1 5
+	/***
+	 * this method is to do the liner computing on the computeBloks with failednodevector and the result will be store
+	 * as a new block named resultBlock. created at 2014-4-14.// modified at 2014-4-21,2014-4-24
+	 * 
+	 * @author ds
+	 * @param computeBlocks
+	 *            blocks take part in the liner computing
+	 * @param failednodeVector
+	 *            row vector in V matrix
+	 * @throws IOException
+	 */
+	private LocatedBlock linearComputing(DatanodeInfo helperDatanodeInfo, Block[] computeBlocks, byte[] failednodeVector)
+			throws IOException
+	{
+		// a : how many blocks a data node stores
+		final int a = computeBlocks.length;
+
+		final int unitSize = 512;
+
+		// create inputStreams from computeBlocks
+
+		InputStream[] ins = new InputStream[a];
+		for (int i = 0; i < a; i++)
+		{
+			try
+			{
+				ins[i] = data.getBlockInputStream(computeBlocks[i]);
+			}
+			catch (IOException e)
+			{
+				LOG.warn("create inputStreams from computeBlocks" + " EXCEPTION " + e.toString() + " ------dsLog ");
+				throw new IOException("could not create inputStreams from computeBlocks", e);
+			}
+		}
+
+		// fake a block to store the result of computing
+		Block resultBlock;
+		long blockId = 12345;
+		Random random = new Random(System.currentTimeMillis());
+		long randomLong = random.nextLong();
+		while (data.getReplica(randomLong) != null)
+		{
+			randomLong = random.nextLong();
+		}
+		blockId = randomLong;
+
+		long numBytes = computeBlocks[0].getNumBytes();
+		long generationStamp = computeBlocks[0].getGenerationStamp();
+		resultBlock = new Block(blockId, numBytes, generationStamp);
+
+		// create a tmp replicaInfo for result block
+		ReplicaInPipelineInterface replicaInfo = null;
+		try
+		{
+			replicaInfo = data.createTemporary(resultBlock);
+		}
+		catch (IOException e)
+		{
+			LOG.info("create tmp replicaInfo for result block" + " EXCEPTION " + e.toString() + " ------dsLog ");
+			throw new IOException("could not create tmp replicaInfo for result block", e);
+
+		}
+
+		// create outs to block file and its checksum data file
+		OutputStream out = null;
+		DataOutputStream checksumOut = null;
+		try
+		{
+			FSDataset.BlockWriteStreams streams = null;
+			// need to reconsider
+			streams = replicaInfo.createStreams(true, unitSize, 4);
+			out = streams.dataOut;
+			checksumOut = new DataOutputStream(new BufferedOutputStream(streams.checksumOut, SMALL_BUFFER_SIZE));
+		}
+		catch (IOException e)
+		{
+			LOG.info("create outs " + " EXCEPTION " + e.toString() + " ------dsLog ");
+			throw new IOException("could not create outs for result block", e);
+		}
+
+		// create DataChescksum
+		DataChecksum checksum = null;
+		checksum = DataChecksum.newDataChecksum(DataChecksum.CHECKSUM_CRC32, unitSize);
+
+		// write header to checksumOut
+
+		try
+		{
+			BlockMetadataHeader.writeHeader(checksumOut, checksum);
+		}
+		catch (IOException e)
+		{
+			LOG.info("write header to checksumOut" + " EXCEPTION " + e.toString() + " ------dsLog ");
+			throw new IOException("could not write header to checksumOut", e);
+		}
+
+		long bytesCount = 0;
+		while (true)
+		{
+			int maxLen = -1;
+			// read bytes to inBufs from ins
+			byte inBufs[][] = new byte[a][unitSize];
+			for (int i = 0; i < a; i++)
+			{
+				try
+				{
+					int inLen = -1;
+					inLen = ins[i].read(inBufs[i]);
+					if (inLen > maxLen)
+					{
+						maxLen = inLen;
+					}
+				}
+				catch (IOException e)
+				{
+					LOG.info("read bytes to inBufs from ins" + " EXCEPTION " + e.toString() + " ------dsLog ");
+					throw new IOException("could not read bytes to inBufs from ins", e);
+				}
+			}
+
+			// judge maxLen
+			if (maxLen == -1)
+			{
+				break;
+			}
+			LOG.info("maxLen = " + maxLen + " ------dsLog ");
+
+			// liner computing, b1*v1+b2*v2+b3*v3+b4*v4+... write result to
+			// outBuf
+			byte outBuf[] = new byte[unitSize];
+			for (int j = 0; j < maxLen; j++)
+			{
+				for (int i = 0; i < a; i++)
+				{
+					outBuf[j] ^= RSCoderProtocol.getRSP().mult(inBufs[i][j], failednodeVector[i]);
+				}
+			}
+			// write outBuf to out
+
+			try
+			{
+				out.write(outBuf, 0, maxLen);
+			}
+			catch (IOException e)
+			{
+				LOG.info("write outBuf to out" + " EXCEPTION " + e.toString() + " ------dsLog ");
+				throw new IOException("could not write outBuf to out", e);
+			}
+
+			// compute checksum
+			checksum.update(outBuf, 0, maxLen);
+			int integer = (int) checksum.getValue();
+			byte[] checksumValueBuf = new byte[4];
+			checksumValueBuf[0] = (byte) ((integer >>> 24) & 0xFF);
+			checksumValueBuf[1] = (byte) ((integer >>> 16) & 0xFF);
+			checksumValueBuf[2] = (byte) ((integer >>> 8) & 0xFF);
+			checksumValueBuf[3] = (byte) ((integer >>> 0) & 0xFF);
+			checksum.reset();
+			// write result to checksumOut
+
+			try
+			{
+				checksumOut.write(checksumValueBuf);
+			}
+			catch (IOException e)
+			{
+				LOG.info("write result to checksumOut" + " EXCEPTION " + e.toString() + " ------dsLog ");
+				throw new IOException("could not write result to checksumOut", e);
+			}
+
+			// bytesCount update
+			bytesCount += maxLen;
+
+		}
+		// flush and close outs
+		try
+		{
+			out.flush();
+			out.close();
+
+			checksumOut.flush();
+			checksumOut.close();
+		}
+		catch (IOException e)
+		{
+			LOG.info("flush and close outs" + " EXCEPTION " + e.toString() + " ------dsLog ");
+			throw new IOException("could not flush and close outs", e);
+		}
+		// finalize replica partly
+		LOG.info("bytesCount: " + bytesCount + " ------dsLog ");
+
+		try
+		{
+			resultBlock.setNumBytes(bytesCount);
+			replicaInfo.setNumBytes(bytesCount);
+			replicaInfo.setBytesAcked(bytesCount);
+			// 4-29
+			replicaInfo.setLastChecksumAndDataLen(bytesCount, null);
+			// data.finalizeBlock(resultBlock); // modified at 2014-4-21
+			// myMetrics.blocksWritten.inc();
+			// closeBlock(resultBlock, DataNode.EMPTY_DEL_HINT);// modified at
+			// 2014-4-21
+		}
+		// catch (IOException e)
+		catch (Exception e) // modified at 2014-4-21
+		{
+			LOG.info("finalized partly" + " EXCEPTION " + e.toString() + " ------dsLog ");
+			throw new IOException("could not finalized partly", e);
+		}
+		// construct LocatedBlock with result block
+		LocatedBlock resultLocatedBlock = new LocatedBlock(resultBlock, new DatanodeInfo[]
+		{ helperDatanodeInfo });
+		return resultLocatedBlock;
+	}
+  
   /**
    * After a block becomes finalized, a datanode increases metric counter,
    * notifies namenode, and adds it to the block scanner
@@ -2044,6 +2816,49 @@ public class DataNode extends Configured
       data.updateReplicaUnderRecovery(oldBlock, recoveryId, newLength);
     return new Block(r);
   }
+//seq RCR_DN_BEGINH.2 3
+	/**
+	 * new comer inform a helper node to start rc in RC(regenerating code)recovery work. created at 2041-4-17. modified
+	 * at 2014-4-24
+	 * 
+	 * @author ds
+	 * @param computeBlocks
+	 *            blocks who take part in liner computing
+	 * @param failednodeVector
+	 *            row failed node in vondemendMatrix
+	 * @return the liner computing result
+	 * @throws IOException
+	 */
+	// 2041-4-17
+	// Block startRCRecovery(Block[] computeBlocks, byte[] failednodeVector);
+	@Override
+	public LocatedBlock beginRCRecovery(DatanodeInfo helperDatanodeInfo, Block[] computeBlocks, byte[] failednodeVector)
+			throws IOException
+	{
+		LOG.info("beginRCRecovery()" + " ------dsLog ");
+		return linearComputing(helperDatanodeInfo, computeBlocks, failednodeVector);
+	}
+
+	// seq RCR_DN_ENDH.2 4
+	/**
+	 * new comer inform a helper node to end rc in RC(regenerating code)recovery work. created at 2041-4-24
+	 * 
+	 * @author ds
+	 */
+	@Override
+	public void endRCRecovery(Block block) throws IOException
+	{
+		LOG.info("endRCRecovery()" + " ------dsLog ");
+		try
+		{
+			data.unfinalizeBlock(block);
+		}
+		catch (IOException e)
+		{
+			LOG.warn("delelte tmp block" + " EXCEPTION " + e.toString() + " ------dsLog ");
+			throw new IOException("could not delelte tmp block", e);
+		}
+	}
 
   /** {@inheritDoc} */
   public long getProtocolVersion(String protocol, long clientVersion

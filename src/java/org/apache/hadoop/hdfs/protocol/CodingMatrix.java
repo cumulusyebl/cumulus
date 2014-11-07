@@ -19,6 +19,11 @@ public abstract class CodingMatrix implements Writable{
 	public static final byte XOR = 1;
 	public static final byte RS = 2;
 	
+	// seq RC.1 1
+	// added by ds at 2014-4-23
+	// RC type
+	public static final byte RC = 3;
+	
 	public CodingMatrix(){
 		row = 0;
 		column = 0;
@@ -120,7 +125,11 @@ public abstract class CodingMatrix implements Writable{
 	
 	public static byte chooseMatrix(long fileLength){
 		//byte ran = (byte)(Math.random()*2);
-		byte ran = CodingMatrix.RS;
+		// seq RC.1 2
+		// modified by ds at 2014-4-23
+		// choose RS or RC
+		// byte ran = CodingMatrix.RS;
+		byte ran = RegeneratingCodeMatrix.isRegeneratingCodeRecovery() ? CodingMatrix.RC : CodingMatrix.RS;
 		return ran;
 	}
 	
@@ -130,6 +139,12 @@ public abstract class CodingMatrix implements Writable{
 			return new XORCoderProtocol();
 		case CodingMatrix.RS:
 			return new RSCoderProtocol((byte)3, (byte)4);
+			// seq RC.1 3
+			// added by ds at 2014-4-24
+			// case RC
+		case CodingMatrix.RC:
+			return new RegeneratingCodeMatrix();
+			
 		default:
 			return new RSCoderProtocol((byte)3, (byte)4);
 		}
@@ -160,4 +175,66 @@ public abstract class CodingMatrix implements Writable{
 	public abstract byte mult(byte b1, byte element);
 	public abstract byte code(byte b1, byte b2, byte element);
 	public abstract int decoder(short[][] g,byte[][] Buf,int[] buflen,int offset,byte[] buf);
+	
+	// seq RC.1 4
+	// added by ds at 2014-4-23
+	// methods needed in RegeneratingProtol
+	// added by ds begins
+	public int getStoreFileNodesNum()
+	{
+		return 0;
+	};
+
+	public int getPerNodeBlocksNum()
+	{
+		return 0;
+	};
+
+	public int getRecoveryMinNodesNum()
+	{
+		return 0;
+	};
+
+	public int getRecoveryNodesNum()
+	{
+		return 0;
+	};
+
+	public int getFileCutsNum()
+	{
+		return 0;
+	};
+
+	public byte[][] getVandermondeMatrix()
+	{
+		return null;
+	};
+
+	public int getN()
+	{
+		return 0;
+	};
+
+	public int getA()
+	{
+		return 0;
+	};
+
+	public int getK()
+	{
+		return 0;
+	};
+
+	public int getD()
+	{
+		return 0;
+	};
+
+	public int getB()
+	{
+		return 0;
+	};
+	
+	
+	// added by ds ends
 }

@@ -25,6 +25,8 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.hdfs.DFSConfigKeys;
 import org.apache.hadoop.hdfs.protocol.Block;
+import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
+import org.apache.hadoop.hdfs.protocol.LocatedBlock;
 import org.apache.hadoop.hdfs.server.protocol.BlockRecoveryCommand.RecoveringBlock;
 import org.apache.hadoop.ipc.VersionedProtocol;
 import org.apache.hadoop.security.KerberosInfo;
@@ -58,4 +60,29 @@ public interface InterDatanodeProtocol extends VersionedProtocol {
   Block updateReplicaUnderRecovery(Block oldBlock,
                                    long recoveryId,
                                    long newLength) throws IOException;
+  
+//seq RCR_DN_BEGINH.1 1
+	/**
+	 * new comer inform a helper node to start rc in RC(regenerating
+	 * code)recovery work. created at 2041-4-17. modified at 2014-4-24
+	 * 
+	 * @author ds
+	 * @param computeBlocks
+	 *            blocks who take part in liner computing
+	 * @param failednodeVector
+	 *            row failed node in vondemendMatrix
+	 * @return the liner computing result
+	 * @throws IOException 
+	 */
+	LocatedBlock beginRCRecovery(DatanodeInfo helperDatanodeInfo,
+			Block[] computeBlocks, byte[] failednodeVector) throws IOException;
+
+	// seq RCR_DN_ENDH.1 2
+	/**
+	 * added at 2014-4-24
+	 * 
+	 * @author ds
+	 * @throws IOException 
+	 */
+	void endRCRecovery(Block block) throws IOException;
 }

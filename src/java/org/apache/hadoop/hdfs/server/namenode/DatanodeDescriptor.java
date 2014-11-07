@@ -29,11 +29,14 @@ import org.apache.hadoop.hdfs.protocol.BlockListAsLongs;
 import org.apache.hadoop.hdfs.protocol.CodingMatrix;
 import org.apache.hadoop.hdfs.protocol.DatanodeID;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
+import org.apache.hadoop.hdfs.protocol.LocatedBlock;
+import org.apache.hadoop.hdfs.protocol.RegeneratingCodeMatrix;
 import org.apache.hadoop.hdfs.protocol.BlockListAsLongs.BlockReportIterator;
 import org.apache.hadoop.hdfs.server.common.HdfsConstants.ReplicaState;
 import org.apache.hadoop.hdfs.server.protocol.BlockCommand;
 import org.apache.hadoop.hdfs.server.protocol.BlockRecoveryCommand;
 import org.apache.hadoop.hdfs.server.protocol.CumulusRecoveryCommand;
+import org.apache.hadoop.hdfs.server.protocol.RCRecoveryCommand;
 import org.apache.hadoop.hdfs.server.protocol.BlockRecoveryCommand.RecoveringBlock;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeProtocol;
 import org.apache.hadoop.io.Text;
@@ -543,6 +546,45 @@ public class DatanodeDescriptor extends DatanodeInfo {
 	  FSNamesystem.LOG.info(lostColumn+"   .............    ");
 	  return new CumulusRecoveryCommand(DatanodeProtocol.DNA_CUMULUS_RECOVERY, filenode.getType(), lostColumn, matrix, blockTargetPairs);
   }
+  
+//seq RCR_NN_APPOINTnc.2 1
+	/**
+	 * get rcr command, based on getCumulusRecoveryCommand(). created at 2014-4-21. modified at.
+	 * 
+	 * @author ds
+	 * @return
+	 */
+	RCRecoveryCommand getRCRecoveryCommand()
+	{
+		BlockInfo representBlockInfo = cumulusRecover.poll();
+		if (representBlockInfo == null)
+		{
+			return null;
+		}
+		INodeFile filenode = representBlockInfo.getINode();
+		BlockInfo[] fileBlockInfos = filenode.getBlocks();
+
+		byte failednodeRow = 0;
+		int a = ((RegeneratingCodeMatrix) filenode.getMatrix()).getA();// 4-28
+		LocatedBlock[] fileLocatedBlocks = new LocatedBlock[fileBlockInfos.length];
+		for (int i = 0; i < fileBlockInfos.length; i++)
+		{
+			BlockInfo blockInfo = fileBlockInfos[i];
+			if (blockInfo.getBlockId() == representBlockInfo.getBlockId())
+			{
+				failednodeRow = (byte) (i / a);
+			}
+			DatanodeInfo datanode = blockInfo.getDatanode(0);
+			LocatedBlock locatedBlock = new LocatedBlock((Block) blockInfo, new DatanodeInfo[]
+			{ datanode });
+			fileLocatedBlocks[i] = locatedBlock;
+		}
+		CodingMatrix matrix = filenode.getMatrix();
+		FSNamesystem.LOG.info("failednodeRow" + failednodeRow + "   .............    ");
+		return new RCRecoveryCommand(DatanodeProtocol.DNA_RC_RECOVERY, filenode.getType(), failednodeRow, matrix,
+				fileLocatedBlocks);
+		// test27-1 exception object cannot casted to LocatedBlock
+	}
   
   BlockCommand getReplicationCommand(int maxTransfers) {
     List<BlockTargetPair> blocktargetlist = replicateBlocks.poll(maxTransfers);

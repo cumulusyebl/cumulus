@@ -63,6 +63,7 @@ import org.apache.hadoop.hdfs.server.protocol.KeyUpdateCommand;
 import org.apache.hadoop.hdfs.server.protocol.NamenodeCommand;
 import org.apache.hadoop.hdfs.server.protocol.NamenodeRegistration;
 import org.apache.hadoop.hdfs.server.protocol.NamespaceInfo;
+import org.apache.hadoop.hdfs.server.protocol.RCRecoveryCommand;
 import org.apache.hadoop.hdfs.server.protocol.UpgradeCommand;
 import org.apache.hadoop.hdfs.server.protocol.BlocksWithLocations.BlockWithLocations;
 import org.apache.hadoop.hdfs.HdfsConfiguration;
@@ -1963,6 +1964,144 @@ public class FSNamesystem implements FSConstants, FSNamesystemMBean, FSClusterSt
     return result.toArray(new LocatedBlock[0]);
   }
 
+//seq LCTBLK.2 1
+	/**
+	 * This method is a overload one of getAdditionalBlock(...). Created at 2014-4-23.Modified at .
+	 * 
+	 * @author ds
+	 */
+	public LocatedBlock[] getAdditionalBlock(boolean isRegeneratingCodeRecovery, String src, String clientName,
+			Block previous, HashMap<Node, Node> excludedNodes) throws LeaseExpiredException, NotReplicatedYetException,
+			QuotaExceededException, SafeModeException, UnresolvedLinkException, IOException
+	{
+		// inner added by ds
+		if (!isRegeneratingCodeRecovery)
+		{
+			return getAdditionalBlock(src, clientName, previous, excludedNodes);
+		}
+
+		long fileLength, blockSize;
+
+		int numOfBlk;
+		int n;// storeFileNodesNum
+		int a;// perNodeBlocksNum
+		DatanodeDescriptor clientNode = null;
+		Block newBlock = null;
+		LinkedList<LocatedBlock> result = new LinkedList<LocatedBlock>();
+		if (NameNode.stateChangeLog.isDebugEnabled())
+		{
+			NameNode.stateChangeLog.debug("BLOCK* NameSystem.getAdditionalBlock: file " + src + " for " + clientName);
+		}
+
+		writeLock();
+		try
+		{
+			if (isInSafeMode())
+			{
+				throw new SafeModeException("Cannot add block to " + src, safeMode);
+			}
+
+			// have we exceeded the configured limit of fs objects.
+			checkFsObjectLimit();
+
+			INodeFileUnderConstruction pendingFile = checkLease(src, clientName);
+
+			// commit the last block and complete it if it has minimum replicas
+			blockManager.commitOrCompleteLastBlock(pendingFile, previous);
+
+			//
+			// If we fail this, bad things happen!
+			//
+			if (!checkFileProgress(pendingFile, false))
+			{
+				throw new NotReplicatedYetException("Not replicated yet:" + src);
+			}
+			fileLength = pendingFile.getFileSize();
+			clientNode = pendingFile.getClientNode();
+			numOfBlk = (int) pendingFile.getMatrix().getColumn();
+			n = ((RegeneratingCodeMatrix) pendingFile.getMatrix()).getStoreFileNodesNum(); // added
+			a = numOfBlk / n;
+		}
+		finally
+		{
+			writeUnlock();
+		}
+
+		// choose targets for the new block to be allocated.
+		// blocksize
+		blockSize = fileLength / numOfBlk;
+
+		// inner modified by ds
+		// // DatanodeDescriptor targets[] =
+		// blockManager.replicator.chooseN(src,
+		// // numOfBlk, clientNode, excludedNodes, blockSize, list);
+		DatanodeDescriptor targets[] = blockManager.replicator.chooseN(src, n, clientNode, excludedNodes, blockSize,
+				list);
+
+		if (targets.length < n)
+		{
+			String string = "Exception: File " + src + "could not be allocated to " + n + " data nodes, but " + targets.length;
+			LOG.warn(string);
+			throw new IOException(string);
+		}
+		if (targets.length < blockManager.minReplication)
+		{
+			throw new IOException("File " + src + " could only be replicated to " + targets.length
+					+ " nodes, instead of " + blockManager.minReplication);
+		}
+
+		// Allocate a new block and record it in the INode.
+		writeLock();
+		try
+		{
+			INode[] pathINodes = dir.getExistingPathINodes(src);
+			int inodesLen = pathINodes.length;
+			checkLease(src, clientName, pathINodes[inodesLen - 1]);
+			INodeFileUnderConstruction pendingFile = (INodeFileUnderConstruction) pathINodes[inodesLen - 1];
+
+			if (!checkFileProgress(pendingFile, false))
+			{
+				throw new NotReplicatedYetException("Not replicated yet:" + src);
+			}
+
+			// allocate new block record block locations in INode.
+			// 
+			DatanodeDescriptor[] dns = new DatanodeDescriptor[1];
+			// inner modified by ds
+			for (int nodeIndex = 0; nodeIndex < n; ++nodeIndex)
+			{
+				dns[0] = targets[nodeIndex];
+				for (int blockIndex = 0; blockIndex < a; blockIndex++)
+				{
+					newBlock = allocateBlock(src, pathINodes, dns.clone());
+					dns[0].incBlocksScheduled();
+					LocatedBlock locatedBlock = new LocatedBlock(newBlock, dns.clone(), 0);// here use dns.clone().why
+					// not dns
+					if (isBlockTokenEnabled)
+					{
+						locatedBlock.setBlockToken(blockTokenSecretManager.generateToken(locatedBlock.getBlock(),
+								EnumSet.of(BlockTokenSecretManager.AccessMode.WRITE)));
+					}
+					result.add(locatedBlock);
+				}
+			}
+			// newBlock = allocateBlock(src, pathINodes, targets);
+			//      
+			// for (DatanodeDescriptor dn : targets) {
+			// dn.incBlocksScheduled();
+			// }
+		}
+		finally
+		{
+			writeUnlock();
+		}
+
+		// Create next block
+
+		return result.toArray(new LocatedBlock[0]);
+	}
+  
+  
   /**
    * The client would like to let go of the given block
    */
@@ -3116,23 +3255,83 @@ public class FSNamesystem implements FSConstants, FSNamesystemMBean, FSClusterSt
       
         ArrayList<DatanodeCommand> cmds = new ArrayList<DatanodeCommand>(4);
         
-        //cumulus recover added by czl
-        cmd = nodeinfo.getCumulusRecoveryCommand();
-        if (cmd != null) {
-			FSNamesystem.LOG.info("node get recover guide : "+nodeinfo.toString());
-			if (isBlockTokenEnabled) {
-				int size = ((CumulusRecoveryCommand)cmd).getSize();
-				FSNamesystem.LOG.info("matrix:  " + ((CumulusRecoveryCommand)cmd).getMatrix().toString());
-				for (int i = 0; i < size; i++) {
-					Token<BlockTokenIdentifier> token = 
-				        blockTokenSecretManager.generateToken(((CumulusRecoveryCommand)cmd).getLocatedBlk(i).getBlock(), 
-				            EnumSet.of(BlockTokenSecretManager.AccessMode.READ));
-				    
-					((CumulusRecoveryCommand)cmd).getLocatedBlk(i).setBlockToken(token);
+     // seq RCR_NN_APPOINTnc.4 3
+		// RC recoery or cumulus recovery
+		// modified by ds at 2014-4-21.
+
+		// modified modified by ds begins
+
+		// //// cumulus recover added by czl
+		// //cmd = nodeinfo.getCumulusRecoveryCommand();
+		// //if (cmd != null)
+		// //{
+		// // FSNamesystem.LOG.info("node get recover guide : "
+		// // + nodeinfo.toString());
+		// // if (isBlockTokenEnabled)
+		// // {
+		// // int size = ((CumulusRecoveryCommand) cmd).getSize();
+		// // FSNamesystem.LOG.info("matrix:  "
+		// // + ((CumulusRecoveryCommand) cmd).getMatrix()
+		// // .toString());
+		// // for (int i = 0; i < size; i++)
+		// // {
+		// // Token<BlockTokenIdentifier> token =
+		// blockTokenSecretManager
+		// // .generateToken(
+		// // ((CumulusRecoveryCommand) cmd)
+		// // .getLocatedBlk(i)
+		// // .getBlock(),
+		// // EnumSet
+		// // .of(BlockTokenSecretManager.AccessMode.READ));
+		// //
+		// // ((CumulusRecoveryCommand) cmd).getLocatedBlk(i)
+		// // .setBlockToken(token);
+		// // }
+		// // }
+		// // cmds.add(cmd);
+		// //}
+		boolean rcRecovery = RegeneratingCodeMatrix.isRegeneratingCodeRecovery();
+		if (rcRecovery)
+		{
+			cmd = nodeinfo.getRCRecoveryCommand();
+			if (cmd != null)
+			{
+				FSNamesystem.LOG.info("node get rc recover guide : " + nodeinfo.toString());
+				if (isBlockTokenEnabled)
+				{
+					int size = ((RCRecoveryCommand) cmd).getSize();
+					for (int i = 0; i < size; i++)
+					{
+						Token<BlockTokenIdentifier> token = blockTokenSecretManager.generateToken(
+								((RCRecoveryCommand) cmd).getLocatedBlk(i).getBlock(), EnumSet
+										.of(BlockTokenSecretManager.AccessMode.READ));
+						((RCRecoveryCommand) cmd).getLocatedBlk(i).setBlockToken(token);
+					}
 				}
+				cmds.add(cmd);
 			}
-			cmds.add(cmd);
 		}
+		else
+		{
+			cmd = nodeinfo.getCumulusRecoveryCommand();
+			if (cmd != null)
+			{
+				FSNamesystem.LOG.info("node get cumulus recover guide : " + nodeinfo.toString());
+				if (isBlockTokenEnabled)
+				{
+					int size = ((CumulusRecoveryCommand) cmd).getSize();
+					for (int i = 0; i < size; i++)
+					{
+						Token<BlockTokenIdentifier> token = blockTokenSecretManager.generateToken(
+								((CumulusRecoveryCommand) cmd).getLocatedBlk(i).getBlock(), EnumSet
+										.of(BlockTokenSecretManager.AccessMode.READ));
+						((CumulusRecoveryCommand) cmd).getLocatedBlk(i).setBlockToken(token);
+					}
+				}
+				cmds.add(cmd);
+			}
+		}
+		// modified by ds ends
         //check pending replication
         cmd = nodeinfo.getReplicationCommand(
               blockManager.maxReplicationStreams - xmitsInProgress);
@@ -3278,7 +3477,12 @@ public class FSNamesystem implements FSConstants, FSNamesystemMBean, FSClusterSt
           * ReplicationMonitor.INVALIDATE_WORK_PCT_PER_ITERATION / 100);
     }
 
-    workFound = blockManager.computeReplicationWork(blocksToProcess);
+    // seq RCR_NN_CHOOSEnc.1 2
+		// modified by ds at 2014-4-27
+		// //workFound = blockManager.computeReplicationWork(blocksToProcess);
+		boolean isRegeneratingCodeRecovery = RegeneratingCodeMatrix.isRegeneratingCodeRecovery();
+		workFound = blockManager.computeReplicationWork(isRegeneratingCodeRecovery, blocksToProcess);
+
     
     // Update FSNamesystemMetrics counters
     writeLock();

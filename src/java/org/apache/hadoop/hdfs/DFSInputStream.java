@@ -40,6 +40,7 @@ import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.LocatedBlock;
 import org.apache.hadoop.hdfs.protocol.LocatedBlocks;
 import org.apache.hadoop.hdfs.protocol.RSCoderProtocol;
+import org.apache.hadoop.hdfs.protocol.RegeneratingCodeMatrix;
 import org.apache.hadoop.hdfs.security.token.block.InvalidBlockTokenException;
 import org.apache.hadoop.hdfs.security.token.block.BlockTokenIdentifier;
 import org.apache.hadoop.hdfs.protocol.CodingMatrix;
@@ -76,7 +77,15 @@ public class DFSInputStream extends FSInputStream {
   
   private Vector<DataPool> dps;
   private CodingMatrix matrix;
-  private int k;
+  //seq 12.1 2
+  // modified by ds at 2014-5-9
+  // modified modified by ds begins
+  // if not rcr, k=k_nodes=k_blocks
+  // //private int k ;
+	private int k_blocks;
+	private int k_nodes;
+	private int B;
+	// modified by ds ends
   private int n;
   private int packetSize = 65024;
   private long fileLength = 0;
@@ -172,14 +181,32 @@ public class DFSInputStream extends FSInputStream {
     
     matrix = dfsClient.namenode.getCodingMatrix(src);
     dps = new Vector<DataPool>();
-    k = matrix.getRow();
+ // seq 12.1 1
+	// modified by ds at 2014-5-9
+	// modified modified by ds begins
+	// // k = matrix.getRow();
+	boolean isRCRecovery = RegeneratingCodeMatrix.isRegeneratingCodeRecovery();
+	if (isRCRecovery)
+	{
+
+		k_nodes = matrix.getK();
+		k_blocks = k_nodes * matrix.getA();
+		B = matrix.getB();
+	}
+	else
+	{
+		k_blocks = matrix.getRow();
+		k_nodes = k_blocks * 1;
+		B = k_blocks;
+	}
+	// modified by ds ends
     n = matrix.getColumn();
     //DFSClient.LOG.info("matrix: "+matrix.toString());
-    usingDN = new int[k];
+    usingDN = new int[k_blocks];
     
     int count = 0;
     
-    while(count < k && blockIndex < n){
+    while(count < k_blocks && blockIndex < n){
 		LocatedBlock block = locatedBlocks.getLocatedBlocks().get(blockIndex);
 	    DNAddrPair retval = chooseDataNode(block);
        //DatanodeInfo chosenNode = retval.info;
@@ -196,7 +223,20 @@ public class DFSInputStream extends FSInputStream {
 	                                  0, block.getBlockSize(), buffersize,
 	                                  verifyChecksum, dfsClient.clientName);
 	          dps.add(new DataPool(reader,0, 2*1024*1024));	
-	          usingDN[count] = blockIndex; 	           
+	          // seq READ.1 4
+				// modified by ds at 2014-5-9
+				// modified modified by ds begins
+				// //usingDN[count] = blockIndex;
+				if (isRCRecovery)
+				{
+					usingDN[count] = blockIndex / matrix.getA();
+				}
+				else
+				{
+					usingDN[count] = blockIndex;
+
+				}
+				// modified by ds ends 	           
 	          count++;
 	          DFSClient.LOG.info("reading block from DataNode: " + retval.addr);
 	          
@@ -207,7 +247,7 @@ public class DFSInputStream extends FSInputStream {
 		}
        blockIndex++;
 	  }
-    if (count < k) {
+    if (count < k_blocks) {
 		throw new IOException("file has failed.............czl");
 	}
     //DFSClient.LOG.info("in openinfo count: "+count+" blockIndex: "+blockIndex);
@@ -215,7 +255,7 @@ public class DFSInputStream extends FSInputStream {
     fileLength = getFileLength();
     //DFSClient.LOG.info("fileLength: "+fileLength);
     
-    Bbyte = new byte[packetSize*k];
+    Bbyte = new byte[packetSize*B];
     startTime = System.currentTimeMillis();
   }
 
@@ -689,16 +729,16 @@ public class DFSInputStream extends FSInputStream {
    * TODO: DN failure must be added in the future
    */
   private int Decoding(byte[] buf,int off) throws IOException{
-	   byte[][] decodebuf = new byte[k][packetSize];//data to be decoded
-	   int[] dataLen = new int[k];//real dataLen, not length of buffer
+	   byte[][] decodebuf = new byte[k_blocks][packetSize];//data to be decoded
+	   int[] dataLen = new int[k_blocks];//real dataLen, not length of buffer
 	   int count = 0;
 	   int len = 0;
-	   byte[][] g = new byte[k][k];
-	   short[][] G = new short[k][k];
+	   byte[][] g = new byte[k_blocks][k_blocks];
+	   short[][] G = new short[k_blocks][k_blocks];
 	   //DFSClient.LOG.info("usingDN: "+usingDN.toString());
 	   
 	   Vector<Integer> fail = new Vector<Integer>();
-	   for (int i = 0; i < k; i++) {	
+	   for (int i = 0; i < k_blocks; i++) {	
 			dataLen[count] = dps.elementAt(i).getData(decodebuf[count], packetSize);
 			if (dps.elementAt(i).error){
 				fail.add(i);
@@ -713,7 +753,7 @@ public class DFSInputStream extends FSInputStream {
 	   //DFSClient.LOG.info("count:  "+count);	
 	   //what if all k DNs failed........
 	  	if(count!=0){
-	  		if(count!=k){
+	  		if(count!=k_blocks){
 	  		//error handling 
 	  		//one DN fails then connect one of n-k DN
 	  			if (n-blockIndex < fail.size()) {
@@ -723,7 +763,7 @@ public class DFSInputStream extends FSInputStream {
 	  			for (int i = 0; i < fail.size(); i++) {
 					dps.remove(fail.get(i));
 				}
-		  		while(count<k && blockIndex<n){
+		  		while(count<k_blocks && blockIndex<n){
 			  		   LocatedBlock block = locatedBlocks.getLocatedBlocks().get(blockIndex);
 			  		   DNAddrPair retval = chooseDataNode(block);
 			  	       //DatanodeInfo chosenNode = retval.info;
@@ -752,32 +792,47 @@ public class DFSInputStream extends FSInputStream {
 			  			}
 			  	       blockIndex++;
 		  		}
-		  		if (count<k){
+		  		if (count<k_blocks){
 		  			throw new IOException("file has failed..............czl");
 		  		}
 	  			
 	  		}
 	  		//DFSClient.LOG.info("before decoding usingDN: "+usingDN.toString());
-	  		byte[][] gg = matrix.getCodingmatrix();
-	  		for (int i = 0; i < k; i++) {
-				for (int j = 0; j < k; j++) {
-					g[i][j] = gg[i][usingDN[j]];
-				}
+	  	// seq READ.1 5
+			// modified by ds at 2014-5-9
+			// modified modified by ds begins
+			if (RegeneratingCodeMatrix.isRegeneratingCodeRecovery())
+			{
+				short[][] VdcMatrixInshort = getVdcMatrixInShort();
+				len = matrix.decoder(VdcMatrixInshort, decodebuf, dataLen, off, buf);
 			}
-	  		//DFSClient.LOG.info("g: "+g.toString());
-	  	 	
-		  	for(int i = 0; i < k;i++)
-		  		for(int j = 0; j < k; j++)
-		  		{
-		  			if(g[j][i] < 0)
-		  				G[j][i]  = (short)(g[j][i]+256);
-		  			else {
-		  				G[j][i]  = (short)(g[j][i]);
+			else
+			{
+				byte[][] gg = matrix.getCodingmatrix();
+				for (int i = 0; i < k_nodes; i++)
+				{
+					for (int j = 0; j < k_nodes; j++)
+					{
+						g[i][j] = gg[i][usingDN[j]];
 					}
-		  		}
-		  	 //len = RSDecoder(G, decodebuf,dataLen,off,buf);
-		  	 //len = XORDecoder(G, decodebuf,dataLen,off,buf);
-		  	len = matrix.decoder(G, decodebuf, dataLen, off, buf);
+				}
+				// DFSClient.LOG.info("g: "+g.toString());
+
+				for (int i = 0; i < k_nodes; i++)
+					for (int j = 0; j < k_nodes; j++)
+					{
+						if (g[j][i] < 0)
+							G[j][i] = (short) (g[j][i] + 256);
+						else
+						{
+							G[j][i] = (short) (g[j][i]);
+						}
+					}
+				// len = RSDecoder(G, decodebuf,dataLen,off,buf);
+				// len = XORDecoder(G, decodebuf,dataLen,off,buf);
+				len = matrix.decoder(G, decodebuf, dataLen, off, buf);
+			}
+			// modified by ds ends
 		  	pos += len;
 		  	 BbyteLength += len;
 		  	 //DFSClient.LOG.info("xy..........len:"+len);
@@ -987,7 +1042,38 @@ public class DFSInputStream extends FSInputStream {
 		  }
    }
 */
-      
+     
+//seq READ.1 3
+	/***
+	 * this method is to getDCMatrix. created at 2014-5-9
+	 * 
+	 * @author ds
+	 */
+	private short[][] getVdcMatrixInShort()
+	{
+		byte[][] VMatrix = matrix.getVandermondeMatrix();
+		int rowNum = k_nodes;
+		int columnNum = VMatrix[0].length;
+		byte[][] VdcMatrix = new byte[rowNum][columnNum];
+		for (int row = 0; row < rowNum; row++)
+		{
+			for (int column = 0; column < columnNum; column++)
+			{
+				VdcMatrix[row][column] = VMatrix[usingDN[row * columnNum]][column];
+			}
+		}
+		short[][] VdcMatrixInShort = new short[rowNum][columnNum];
+		for (int row = 0; row < rowNum; row++)
+		{
+			for (int column = 0; column < columnNum; column++)
+			{
+				byte tmp = VdcMatrix[row][column];
+				VdcMatrixInShort[row][column] = tmp >= 0 ? (short) tmp : (short) (tmp + 256);
+			}
+		}
+		return VdcMatrixInShort;
+	}
+  
   private DNAddrPair chooseDataNode(LocatedBlock block)
     throws IOException {
     while (true) {
@@ -1252,12 +1338,12 @@ public class DFSInputStream extends FSInputStream {
     
     int packetSize = 65024;
     if (position>pos){
-	    long startOffset = position/(packetSize*k)*packetSize;
+	    long startOffset = position/(packetSize*k_blocks)*packetSize;
 	    for (int i = 0; i < dps.size(); i++) {
 	    	//each blk seek to specific position
 			dps.elementAt(i).seekTo(startOffset);
 		}
-	    int partial = (int) (position%(packetSize*k));
+	    int partial = (int) (position%(packetSize*k_blocks));
 	    while(partial>0){
 	    	byte[] buf = new byte[buffer.length];
 	    	int len = read(buf, 0, buffer.length);

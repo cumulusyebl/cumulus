@@ -55,6 +55,7 @@ import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.HdfsFileStatus;
 import org.apache.hadoop.hdfs.protocol.LocatedBlock;
 import org.apache.hadoop.hdfs.protocol.NSQuotaExceededException;
+import org.apache.hadoop.hdfs.protocol.RegeneratingCodeMatrix;
 import org.apache.hadoop.hdfs.protocol.UnresolvedPathException;
 import org.apache.hadoop.hdfs.protocol.DataTransferProtocol.BlockConstructionStage;
 import org.apache.hadoop.hdfs.protocol.DataTransferProtocol.PacketHeader;
@@ -303,9 +304,28 @@ class DFSOutputStream extends FSOutputSummer implements Syncable {
     void mult(byte element) {
     	
     	int len = dataPos - dataStart;
-    	for (int i = 0; i < len; i++) {
-			this.buf[this.dataStart+i] = matrix.mult(this.buf[this.dataStart+i], element);
+    	// seq LCTBLK.4 1
+		// modified by ds at 2014-5-7
+		// modified modified by ds begins
+		// //for (int i = 0; i < len; i++)
+		// //{
+		// // this.buf[this.dataStart + i] = matrix.mult(this.buf[this.dataStart + i], element);
+		// //}
+		if (element == 0)
+		{
+			for (int i = 0; i < len; i++)
+			{
+				this.buf[this.dataStart + i] = (byte) 0;
+			}
 		}
+		else
+		{
+			for (int i = 0; i < len; i++)
+			{
+				this.buf[this.dataStart + i] = matrix.mult(this.buf[this.dataStart + i], element);
+			}
+		}
+		// modified by ds ends
     }
 
     /**
@@ -320,9 +340,18 @@ class DFSOutputStream extends FSOutputSummer implements Syncable {
       // long start = System.currentTimeMillis();
 
       int len = p.dataPos - p.dataStart;
-	    for (int i = 0; i < len; i++) {
-	      this.buf[this.dataStart + i] = matrix.code(this.buf[this.dataStart + i], p.buf[p.dataStart + i], element);
-	    }
+	    
+      	// seq LCTBLK.4 2
+		// added by ds at 2014-5-7
+		if (element == 0)
+		{// this case packet unchanged
+			return;
+		}
+		for (int i = 0; i < len; i++)
+		{
+			this.buf[this.dataStart + i] = matrix.code(this.buf[this.dataStart + i], p.buf[p.dataStart + i],
+					element);
+		}
 
       // int flag = dataStart;
       // int checksumPerPacket = (checksumPos - checksumStart)/4;
@@ -2251,30 +2280,42 @@ class DFSOutputStream extends FSOutputSummer implements Syncable {
     // long start = System.nanoTime();
 
     count = 0;
-    for (int i = 0; i < matrix.getColumn(); ++i) {
-      if (matrix.getElemAt(row, i) != 0) {
-        synchronized (object) {
-          count++;
-          object.notify();
-        }
-        if (codeBuf[i] == null) {
-          codeBuf[i] = new Packet(currentPacket);
-          // codeBuf[i].mult(matrix.getElemAt(row, i));
-          // new Thread(new mult(codeBuf[i], matrix.getElemAt(row,
-          // i))).start();;
-          pool.execute(new mult(codeBuf[i], matrix.getElemAt(row, i)));
-          codeBuf[i].setOffset(offsetInB);
-        } else {
-          // codeBuf[i].code(currentPacket,matrix.getElemAt(row, i));
-          // new Thread(new code(codeBuf[i], currentPacket,
-          // matrix.getElemAt(row, i))).start();
-          pool.execute(new code(codeBuf[i], currentPacket, matrix.getElemAt(
-              row, i)));
-        }
+    // seq LCTBLK.4 3
+	// added by ds at 2014-5-7
+	boolean isRCR = RegeneratingCodeMatrix.isRegeneratingCodeRecovery();
+	for (int i = 0; i < matrix.getColumn(); ++i)
+	{
+		// seq LCTBLK.4 4
+		// modified by ds at 2014-5-7
+		// modified modified by ds begins
+		// //if (matrix.getElemAt(row, i) != 0)
+		if (isRCR || matrix.getElemAt(row, i) != 0)
+		{
+			synchronized (object)
+			{
+				count++;
+				object.notify();
+			}
+			if (codeBuf[i] == null)
+			{
+				codeBuf[i] = new Packet(currentPacket);
+				// codeBuf[i].mult(matrix.getElemAt(row, i));
+				// new Thread(new mult(codeBuf[i], matrix.getElemAt(row,
+				// i))).start();;
+				pool.execute(new mult(codeBuf[i], matrix.getElemAt(row, i)));
+				codeBuf[i].setOffset(offsetInB);
+			}
+			else
+			{
+				// codeBuf[i].code(currentPacket,matrix.getElemAt(row, i));
+				// new Thread(new code(codeBuf[i], currentPacket,
+				// matrix.getElemAt(row, i))).start();
+				pool.execute(new code(codeBuf[i], currentPacket, matrix.getElemAt(row, i)));
+			}
 
-      }
+		}
 
-    }
+	}
 
     // DFSClient.LOG.info("before wait: "+(System.nanoTime()-start));
     while (true) {

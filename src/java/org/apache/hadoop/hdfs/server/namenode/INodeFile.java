@@ -35,7 +35,10 @@ class INodeFile extends INode {
   static final int fileSizeStart = 0;
   static final int packetSizeStart = 6; 
   static final int matrixStart = 12; 
-  static final int headerSize = 128;
+//seq LCTBLK.2 1
+	// modified by ds at 2014-4-27
+	////static final int headerSize = 128;
+	static final int headerSize = 512;
   
   //added by czl
   static byte matrixType = 0;
